@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sesame-lite"
+version = "0.1"
+description = "SESAME-3D lightweight study: semantic safety filter on RoboCasa365"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["src"]

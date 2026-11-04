@@ -1,0 +1,10 @@
+{
+  "mission": "open_drawer",
+  "task": "OpenDrawer",
+  "description": "Open the drawer in front of the robot with the VLA. The drawer box and its handle are task-contact parts; the cabinet body, the counter and the distractor objects on the counter are not.",
+  "env_kwargs": {"split": "target"},
+  "roles": {"drawer": {"fixture_ref": "drawer"}},
+  "segments": [
+    {"kind": "VLA", "skill": "open", "targets": ["drawer"], "exempt": [{"role": "drawer", "parts": ["inner_box", "handle"]}], "done": {"check": "task_success"}}
+  ]
+}

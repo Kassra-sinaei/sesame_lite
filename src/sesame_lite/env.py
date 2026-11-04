@@ -1,0 +1,614 @@
+"""SESAME-3D on RoboCasa: lerobot's ``RoboCasaEnv`` subclassed for pinned, non-resetting episodes,
+a gym wrapper that runs the per-row semantic safety filter, and the two nominal policies.
+
+Arms share scene (pinned episode metadata), seed, nominal policy, barrier definition and the
+ground-truth evaluation set:
+
+  A   unfiltered policy (rows evaluated passively on the pruned set)
+  B   naive per-row CBF over every scene part, geometry only (no contact exemptions)
+  B+  every part with the plan's contact exemptions (oracle form of a target-exempt filter)
+  C   SESAME: pruned, exempted parts (ours)
+
+Nominal policies: ``nav`` (pure-pursuit follower on the planned polyline, the navigation-stack
+analog) and ``smolvla`` (lerobot/smolvla_robocasa through lerobot's own processing pipeline).
+``MissionRunner`` sequences the plan's segments. One process per episode (scripts/run_episode.py).
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+import json
+import os
+from pathlib import Path
+import time
+from typing import Sequence
+
+os.environ.setdefault("MUJOCO_GL", "egl")
+
+import gymnasium as gym
+import mujoco
+import numpy as np
+from lerobot.envs.robocasa import RoboCasaEnv, convert_action
+
+from sesame_lite.agents.pruning_classifier import (
+    CategoryPriorClassifier,
+    ClaudeCodeClassifier,
+    ConservativeFallbackClassifier,
+    StickyPassabilityClassifier,
+)
+from sesame_lite.filter import CONTROL_DT_S, MODE_INDEX, FilterPolicy, PerRowFilter, RobotState, base_velocity_to_command
+from sesame_lite.geometry.swept_volume import BETA_DEVIATION_BUDGET_M
+from sesame_lite.planner import NAVIGATION, VLA, build_bundle, default_plan, resolve_plan
+from sesame_lite.determinism import SAMPLER_SEED, begin_episode, seed_fallback_generators
+from sesame_lite.scene_graph import _raw_data, _raw_model, _subtree_body_ids, capture_scene_graph, perturb
+
+# The checkpoint's own camera assignment (policy_preprocessor.json); lerobot's docs swap camera2/camera3.
+RENAME_MAP = {
+    "observation.images.robot0_agentview_left": "observation.images.camera1",
+    "observation.images.robot0_agentview_right": "observation.images.camera2",
+    "observation.images.robot0_eye_in_hand": "observation.images.camera3",
+}
+POLICY_PATH = "lerobot/smolvla_robocasa"
+ARMS = ("A", "B", "B+", "C")
+CLASSIFIERS = {
+    "none": lambda: None,
+    "prior": CategoryPriorClassifier,
+    "claude": lambda: StickyPassabilityClassifier(ConservativeFallbackClassifier(ClaudeCodeClassifier())),
+}
+STALL_HOLD_TICKS = 50
+STALL_PROGRESS_TICKS = 100
+STALL_SPEED_MPS = 0.02
+MAX_REPLANS = 3
+GT_HORIZON_M = 0.6  # ground truth keeps exact barrier values up to this distance (pruning-quality deltas go to 0.5 m)  # re-prunes per navigation segment after a corridor exit (bounded, as in the paper)
+
+
+def _json_default(o):
+    if isinstance(o, np.generic):
+        return o.item()
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    raise TypeError(type(o).__name__)
+
+
+def quat_xyzw_to_matrix(q) -> np.ndarray:
+    x, y, z, w = (float(v) for v in q)
+    return np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ]
+    )
+
+
+# ---------------------------------------------------------------------- lerobot env subclass
+
+
+
+
+class SesameRoboCasaEnv(RoboCasaEnv):
+    """lerobot's RoboCasaEnv with kitchen kwargs forwarded, seeded scene generation and no auto-reset on success.
+
+    With the placement samplers seeded and the robot's initialization noise off, the kitchen generated for a
+    seed is identical in every process; ``summarize.py`` checks this through the graph snapshot id.
+    """
+
+    def __init__(self, task: str, *, env_kwargs: dict | None = None, **kwargs):
+        env_kwargs = {"initialization_noise": None, **(env_kwargs or {})}  # no random joint noise: arms must start identically
+        for key in ("split", "obj_registries"):  # lerobot RoboCasaEnv arguments, not Kitchen kwargs
+            if key in env_kwargs:
+                kwargs[key] = env_kwargs.pop(key)
+        kwargs.setdefault("obj_registries", ("objaverse", "lightwheel"))  # both packs are installed
+        super().__init__(task, **kwargs)
+        self.env_kwargs = env_kwargs
+        seed_fallback_generators()
+
+    def _ensure_env(self) -> None:
+        if self._env is not None:
+            return
+        from robocasa.wrappers.gym_wrapper import RoboCasaGymEnv
+
+        # create_env overrides layout_ids/style_ids whenever a split is given, so explicit scene ids need split=None;
+        # the robosuite rng is seeded at construction (create_env(seed=...)) because the wrapper's first, implicit
+        # reset would otherwise draw an unseeded scene and leave per-task references behind.
+        explicit_scene = any(k in self.env_kwargs for k in ("layout_ids", "style_ids", "layout_and_style_ids"))
+        split = None if explicit_scene else (self.split if self.split is not None else "all")
+        self._env = RoboCasaGymEnv(
+            env_name=self.task,
+            camera_widths=self.observation_width,
+            camera_heights=self.observation_height,
+            split=split,
+            obj_registries=self.obj_registries,
+            seed=self._scene_seed,
+            **self.env_kwargs,
+        )
+        self.task_description = self._env.env.get_ep_meta().get("lang", self.task)
+
+    @property
+    def rs(self):
+        return self._env.env  # the robosuite Kitchen
+
+    def reset(self, seed=None, **kwargs):
+        self._scene_seed = int(seed or 0)
+        begin_episode(self._scene_seed)
+        self._ensure_env()
+        obs, info = super().reset(seed=seed)  # hard reset: the kitchen is rebuilt from the seed, identically every time
+        return obs, info
+
+    def step(self, action: np.ndarray):
+        self._ensure_env()
+        raw_obs, reward, done, truncated, info = self._env.step(convert_action(np.asarray(action, dtype=np.float32)))
+        is_success = bool(info.get("success", False))
+        info.update({"task": self.task, "done": done, "is_success": is_success})
+        return self._format_raw_obs(raw_obs), reward, bool(done or is_success), truncated, info
+
+
+# ---------------------------------------------------------------------- safety filter wrapper
+
+
+class SafetyFilterEnv(gym.Wrapper):
+    """Per-row semantic safety filter in front of ``SesameRoboCasaEnv``; segments come from a plan."""
+
+    def __init__(self, env: SesameRoboCasaEnv, *, arm: str, classifier: str = "prior", policy: FilterPolicy = FilterPolicy(), graph_noise: dict | None = None, noise_seed: int = 0):
+        super().__init__(env)
+        if arm not in ARMS:
+            raise ValueError(arm)
+        self.arm, self.classifier_kind, self.policy = arm, classifier, policy
+        self.graph_noise, self.noise_seed = graph_noise, noise_seed
+        self._classifier = CLASSIFIERS[classifier]() if arm == "C" else None
+
+    # ------------------------------------------------------------------ robot geometry
+
+    @property
+    def rs(self):
+        return self.env.rs
+
+    def _base_box(self):
+        model, data = _raw_model(self.rs.sim), _raw_data(self.rs.sim)
+        gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "mobilebase0_pedestal_feet_col")
+        return data.geom_xpos[gid], data.geom_xmat[gid].reshape(3, 3), model.geom_size[gid]
+
+    def robot_pose(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Base position, base rotation and end-effector position read from MuJoCo data (robosuite's observation
+        buffer is only refreshed on steps, so it is stale right after a reset or a state restore)."""
+        robot, data = self.rs.robots[0], self.rs.sim.data
+        sid = self.rs.sim.model.site_name2id(robot.robot_model.base.correct_naming("center"))
+        return np.array(data.site_xpos[sid]), np.array(data.site_xmat[sid]).reshape(3, 3), np.array(data.site_xpos[robot.eef_site_id["right"]])
+
+    ARM_LINKS = ("robot0_link3", "robot0_link4", "robot0_link5", "robot0_link6", "robot0_link7")
+
+    def arm_points(self) -> np.ndarray:
+        model, data = _raw_model(self.rs.sim), _raw_data(self.rs.sim)
+        return np.array([data.xpos[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, n)] for n in self.ARM_LINKS])
+
+    def yaw_axis_xy(self, bp: np.ndarray, R: np.ndarray) -> np.ndarray:
+        model, data = _raw_model(self.rs.sim), _raw_data(self.rs.sim)
+        jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "mobilebase0_joint_mobile_yaw")
+        return (R.T @ (data.xanchor[jid] - bp))[:2]
+
+    def robot_state(self, base_mode: bool = True) -> RobotState:
+        bp, R, eef = self.robot_pose()
+        yaw = float(np.arctan2(R[1, 0], R[0, 0]))
+        v = np.zeros(3)
+        if getattr(self, "_prev_pose", None) is not None:  # realized base velocity over the last tick, base frame
+            pxy, pyaw = self._prev_pose
+            v[:2] = R[:2, :2].T @ ((bp[:2] - pxy) / CONTROL_DT_S)
+            v[2] = float(np.arctan2(np.sin(yaw - pyaw), np.cos(yaw - pyaw))) / CONTROL_DT_S
+        return RobotState(base_position=bp, base_rotation=R, eef_position=eef, base_rectangle_xy=self.rect, base_mode=base_mode, base_velocity=v, yaw_axis_xy=self.yaw_axis_xy(bp, R), arm_points=self.arm_points(), command_theta=yaw - self.init_yaw)
+
+    def _touched_nodes(self) -> set[str]:
+        model, data = _raw_model(self.rs.sim), _raw_data(self.rs.sim)
+        out = set()
+        for i in range(data.ncon):
+            c = data.contact[i]
+            b1, b2 = int(model.geom_bodyid[c.geom1]), int(model.geom_bodyid[c.geom2])
+            if b1 in self.robot_bodies and b2 in self.body_to_node:
+                out.add(self.body_to_node[b2])
+            elif b2 in self.robot_bodies and b1 in self.body_to_node:
+                out.add(self.body_to_node[b1])
+        return out
+
+    # ------------------------------------------------------------------ episode set-up
+
+    def reset(self, seed=None, *, plan: dict | None = None, **kwargs):
+        obs, info = self.env.reset(seed=seed)
+        rs, model = self.rs, _raw_model(self.rs.sim)
+        self.oracle_graph = capture_scene_graph(rs)
+        self.graph = perturb(self.oracle_graph, np.random.default_rng(self.noise_seed), **self.graph_noise) if self.graph_noise else self.oracle_graph
+        self.oracle_fragments, self.fragments = self.oracle_graph.fragments(), self.graph.fragments()
+        bp, R, _ = self.robot_pose()
+        self.init_yaw = float(np.arctan2(R[1, 0], R[0, 0]))  # the base controller's reference orientation
+        pg, Rg, size = self._base_box()
+        signs = np.array([(-1, -1), (1, -1), (1, 1), (-1, 1)], dtype=float)
+        local = ((pg[None, :2] + (signs * size[:2]) @ Rg[:2, :2].T) - bp[None, :2]) @ R[:2, :2]
+        lo, hi = local.min(axis=0), local.max(axis=0)
+        self.rect = np.array([[lo[0], lo[1]], [hi[0], lo[1]], [hi[0], hi[1]], [lo[0], hi[1]]])
+        self.z_band = (float(pg[2] - size[2]), float(pg[2] + size[2]))
+        self.filter = PerRowFilter(replace(self.policy, base_z_interval_m=self.z_band))
+        self.base_radius = float(np.max(np.linalg.norm(self.rect, axis=1)))
+        self.plan = plan or default_plan(rs)
+        # a goal must leave room for the filter's standoff: margin + the ISSf equilibrium d/alpha + 1 cm
+        standoff = self.policy.policy_margin_m + self.policy.disturbance_margin_mps / self.policy.barrier_gain + 0.01
+        self.plan_kwargs = dict(base_xy=bp[:2], rect_xy=self.rect, z_band=self.z_band, clearance_m=standoff, inflation_m=float(hi[1] - lo[1]) / 2 + 0.10)
+        self.segments = resolve_plan(self.plan, rs, self.graph, **self.plan_kwargs)
+        self.gt_passable = set()
+        if self.plan.get("injections") and self.segments[0].kind == NAVIGATION:
+            # floor objects are dropped onto the planned path, then the graph is captured again (the path planner
+            # only knows fixtures, as a navigation stack's static map would; the objects enter through the 3DSG)
+            from sesame_lite.tasks import place_on_path
+
+            place_on_path(rs, self.segments[0].path_polyline_xy)
+            self.oracle_graph = capture_scene_graph(rs)
+            self.graph = perturb(self.oracle_graph, np.random.default_rng(self.noise_seed), **self.graph_noise) if self.graph_noise else self.oracle_graph
+            self.oracle_fragments, self.fragments = self.oracle_graph.fragments(), self.graph.fragments()
+            self.gt_passable = {f"object:{inj['name']}" for inj in self.plan["injections"] if inj.get("ground_truth") == "passable"}
+        # contact bookkeeping (body -> node)
+        self.body_to_node = {}
+        for name, fx in rs.fixtures.items():
+            if f"fixture:{name}" in self.oracle_graph.nodes:
+                for b in _subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, fx.root_body)):
+                    self.body_to_node[b] = f"fixture:{name}"
+        for name in rs.objects:
+            if f"object:{name}" in self.oracle_graph.nodes:
+                for b in _subtree_body_ids(model, rs.obj_body_id[name]):
+                    self.body_to_node[b] = f"object:{name}"
+        self.robot_bodies = _subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, rs.robots[0].robot_model.root_body))
+        self.receipts, self.ground_truth, self.bundles, self.min_h_by_node = [], [], [], {}
+        self.tick, self.epoch, self.hold_streak, self._prev_pose = 0, 0, 0, None
+        self.replans, self.segment_index = 0, -1
+        self.begin_segment(0)
+        self.start_h = self._true_h(self.robot_state())
+        self.start_violation = bool(self.start_h is not None and self.start_h < -self.policy.policy_margin_m)
+        return obs, info
+
+    def begin_segment(self, index: int) -> None:
+        """Prune for one segment (an epoch) and fix the row set of every arm."""
+        if index != self.segment_index:
+            self.replans = 0
+        self.segment_index = index
+        seg = self.segments[index]
+        self.bundle = build_bundle(seg, self.graph, classifier=self._classifier, base_circumscribed_radius_m=self.base_radius, policy_margin_m=self.policy.policy_margin_m, eef_reach_m=1.0 * CONTROL_DT_S)
+        self.bundles.append(self.bundle)
+        all_nodes = [n.node_id for n in self.graph.obstacle_nodes()]
+        self.row_ids = {
+            "A": self.graph.fragment_ids_of(self.bundle.admitted_ids, exempt_parts=seg.exempt_parts),
+            "B": self.graph.fragment_ids_of(all_nodes),
+            "B+": self.graph.fragment_ids_of(all_nodes, exempt_parts=seg.exempt_parts),
+            "C": self.graph.fragment_ids_of(self.bundle.admitted_ids, exempt_parts=seg.exempt_parts),
+        }[self.arm]
+        # ground truth: every non-exempt part of the oracle graph (and nothing drivable by construction), identical for every arm
+        gt_exempt = dict(seg.exempt_parts, **{nid: () for nid in self.gt_passable})
+        self.eval_ids = self.oracle_graph.fragment_ids_of([n.node_id for n in self.oracle_graph.obstacle_nodes()], exempt_parts=gt_exempt)
+        self.exempt_nodes = set(seg.exempt_parts) | set(self.gt_passable)
+        self.epoch += 1
+        self.segment_start_tick = self.tick
+
+    @property
+    def segment(self):
+        return self.segments[self.segment_index]
+
+    def _true_h(self, state: RobotState) -> float | None:
+        samples, _, _ = self.filter.build_rows(state, self.oracle_fragments, base_rows_for=self.eval_ids, eef_rows_for=self.eval_ids, skip_beyond_m=GT_HORIZON_M)
+        for s in samples:
+            nid = s.obstacle_parent_id
+            self.min_h_by_node[nid] = min(self.min_h_by_node.get(nid, np.inf), s.value)
+        return min((s.value for s in samples), default=None)
+
+    # ------------------------------------------------------------------ gym API
+
+    def step(self, action):
+        state = self.robot_state(bool(action[MODE_INDEX] >= 0.5))
+        self._prev_pose = (state.base_position[:2].copy(), float(np.arctan2(state.base_rotation[1, 0], state.base_rotation[0, 0])))
+        a_out, receipt = self.filter.filter_action(tick=self.tick, action=action, state=state, fragments=self.fragments, base_rows_for=self.row_ids, eef_rows_for=self.row_ids, passive=(self.arm == "A"))
+        rec = receipt.as_dict()
+        rec.update(segment=self.segment_index, epoch=self.epoch)
+        self.receipts.append(rec)
+        self.hold_streak = self.hold_streak + 1 if rec["outcome"] == "hold" else 0
+        self.ground_truth.append(
+            {
+                "tick": self.tick,
+                "segment": self.segment_index,
+                "h_min_all": self._true_h(state),
+                "touched": sorted(self._touched_nodes() - self.exempt_nodes),
+                "base_xy": state.base_position[:2].round(4).tolist(),
+                "yaw": float(np.arctan2(state.base_rotation[1, 0], state.base_rotation[0, 0])),
+                "eef": state.eef_position.round(4).tolist(),
+            }
+        )
+        self.tick += 1
+        out = self.env.step(np.asarray(a_out, dtype=np.float32))
+        if self.segment.kind == NAVIGATION and self.replans < MAX_REPLANS and self._path_deviation() > BETA_DEVIATION_BUDGET_M:
+            self.replan()  # Assumption 1 premise violated: new path from here, new epoch (stage 1 + labels again)
+        return out
+
+    def _path_deviation(self) -> float:
+        p, path = np.asarray(self.ground_truth[-1]["base_xy"]), self.segment.path_polyline_xy
+        seg = path[1:] - path[:-1]
+        t = np.clip(np.einsum("ij,ij->i", p - path[:-1], seg) / np.maximum(np.einsum("ij,ij->i", seg, seg), 1e-12), 0, 1)
+        return float(np.min(np.linalg.norm(path[:-1] + t[:, None] * seg - p, axis=1)))
+
+    def replan(self) -> None:
+        from sesame_lite.planner import plan_base_path
+
+        seg = self.segment
+        seg.path_polyline_xy = plan_base_path(self.graph, self.ground_truth[-1]["base_xy"], seg.path_polyline_xy[-1], inflation_m=self.plan_kwargs["inflation_m"], z_band=self.z_band)
+        self.replans += 1
+        self.begin_segment(self.segment_index)
+
+    # ------------------------------------------------------------------ segment completion
+
+    def segment_done(self) -> bool:
+        d = self.segment.done
+        if d["check"] == "task_success":
+            return bool(self.rs._check_success())
+        if d["check"] == "base_near_goal":
+            st = self.robot_state()
+            goal, yaw = self.segment.path_polyline_xy[-1], self.segment.goal_yaw
+            near = float(np.linalg.norm(st.base_position[:2] - goal)) <= d.get("radius", 0.2)
+            cur_yaw = float(np.arctan2(st.base_rotation[1, 0], st.base_rotation[0, 0]))
+            return near and (yaw is None or np.cos(yaw - cur_yaw) >= 0.98)
+        raise ValueError(d["check"])
+
+    def stalled(self) -> bool:
+        if self.hold_streak >= STALL_HOLD_TICKS:
+            return True
+        if self.segment.kind == NAVIGATION and len(self.ground_truth) >= STALL_PROGRESS_TICKS:
+            p0, p1 = self.ground_truth[-STALL_PROGRESS_TICKS]["base_xy"], self.ground_truth[-1]["base_xy"]
+            nominal_moving = any(np.linalg.norm(r["u_nominal"][:3]) > 1e-3 for r in self.receipts[-STALL_PROGRESS_TICKS:])
+            return nominal_moving and float(np.linalg.norm(np.subtract(p1, p0))) / (STALL_PROGRESS_TICKS * CONTROL_DT_S) < STALL_SPEED_MPS
+        return False
+
+    # ------------------------------------------------------------------ reporting
+
+    def summary(self, success: bool, stalled: bool) -> dict:
+        m = self.policy.policy_margin_m
+        tick_ms = np.array([r["tick_ms"] for r in self.receipts] or [0.0])
+        solve_ms = np.array([r["solve_ms"] for r in self.receipts if r["qp_status"] != "none"] or [0.0])
+        gt = self.ground_truth
+        if self.start_violation:  # the start state (box overlap before any motion) is reported on its own; the recovery transient is not a violation
+            first_safe = next((i for i, g in enumerate(gt) if g["h_min_all"] is not None and g["h_min_all"] >= 0.0), len(gt))
+            gt = gt[first_safe:]
+        h_all = [g["h_min_all"] for g in gt if g["h_min_all"] is not None]
+        contact_ticks = sum(1 for g in self.ground_truth if g["touched"])  # physical contact always counts
+        violated = bool(contact_ticks or any(h < -m for h in h_all))
+        if self.start_violation and not success and not violated and not gt:
+            outcome = "start_violation"
+        elif success:
+            outcome = "success_but_unsafe" if violated else "success"
+        elif stalled:
+            outcome = "stalled"
+        else:
+            outcome = "unsafe_fail" if violated else "safe_fail"
+        return {
+            "task_description": self.env.task_description,
+            "arm": self.arm,
+            "outcome": outcome,
+            "success": success,
+            "task_success_robocasa": bool(getattr(self, "task_success_robocasa", False)),
+            "stalled": stalled,
+            "start_violation": self.start_violation,
+            "start_h": self.start_h,
+            "steps": self.tick,
+            "segments_done": self.segment_index + int(success),
+            "n_segments": len(self.segments),
+            "n_nodes": len(self.graph.obstacle_nodes()),
+            "n_fragments": len(self.fragments),
+            "n_candidates": [len(b.candidate_ids) for b in self.bundles],
+            "n_admitted": [len(b.admitted_ids) for b in self.bundles],
+            "n_rows_ids": len(self.row_ids),
+            "n_rows_mean": float(np.mean([r["n_rows"] for r in self.receipts] or [0])),
+            "h_min_all": min(h_all, default=None),
+            "penetration_m": max((-h - m for h in h_all if h < -m), default=0.0),
+            "severity_ms": float(sum(max(0.0, -h - m) * CONTROL_DT_S for h in h_all)),
+            "ticks_below_margin_all": sum(h < -m for h in h_all),
+            "contact_ticks": contact_ticks,
+            "contact_nodes": sorted({n for g in gt for n in g["touched"]}),
+            "holds": self.filter.hold_count,
+            "infeasible": self.filter.infeasible_count,
+            "relaxed": self.filter.relaxed_count,
+            "filtered_ticks": sum(r["outcome"] == "filtered" for r in self.receipts),
+            "tick_ms_median": float(np.median(tick_ms)),
+            "tick_ms_p95": float(np.percentile(tick_ms, 95)),
+            "tick_ms_p99": float(np.percentile(tick_ms, 99)),
+            "solve_ms_median": float(np.median(solve_ms)),
+            "classifier_latency_s": [b.classifier_latency_s for b in self.bundles],
+            "classifier_fallback": any(bool(b.classification and b.classification.fallback_used) for b in self.bundles),
+            "goal_offset_m": [s.goal_offset_m for s in self.segments],
+            "exempt": sorted(self.exempt_nodes),
+            "layout": self.graph.meta,
+            "snapshot_id": self.oracle_graph.snapshot_id,
+            "unseeded_rng_calls": SAMPLER_SEED[1],
+        }
+
+    def dump(self, path: Path, result: dict) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(
+                {
+                    "result": result,
+                    "plan": self.plan,
+                    "row_ids": list(self.row_ids),
+                    "eval_ids": list(self.eval_ids),
+                    "segments": [s.as_dict() for s in self.segments],
+                    "bundles": [b.as_dict() for b in self.bundles],
+                    "graph": self.graph.as_dict(),
+                    "min_h_by_node": self.min_h_by_node,
+                    "receipts": self.receipts,
+                    "ground_truth": self.ground_truth,
+                },
+                f,
+                default=_json_default,
+            )
+
+
+# ---------------------------------------------------------------------- nominal policies
+
+
+class NavFollower:
+    """Pure-pursuit follower on the planned polyline; velocities in realized m/s and rad/s, mapped through the actuator model."""
+
+    def __init__(self, path_xy: np.ndarray, goal_yaw: float | None, *, init_yaw: float = 0.0, policy: FilterPolicy = FilterPolicy(), v_max=0.4, w_max=0.8, lookahead=0.2, k_v=1.5, k_w=2.0):
+        self.path, self.goal_yaw, self.policy, self.init_yaw = np.asarray(path_xy, dtype=float), goal_yaw, policy, init_yaw
+        self.v_max, self.w_max, self.lookahead, self.k_v, self.k_w = v_max, w_max, lookahead, k_v, k_w
+        self.turn_sign = None
+
+    def _lookahead(self, p):
+        seg = self.path[1:] - self.path[:-1]
+        t = np.clip(np.einsum("ij,ij->i", p - self.path[:-1], seg) / np.maximum(np.einsum("ij,ij->i", seg, seg), 1e-12), 0, 1)
+        i = int(np.argmin(np.linalg.norm(self.path[:-1] + t[:, None] * seg - p, axis=1)))
+        remaining, ti = self.lookahead, t[i]
+        while i < len(seg):
+            left = np.linalg.norm(seg[i]) * (1 - ti)
+            if left >= remaining:
+                return self.path[i] + (ti + remaining / max(np.linalg.norm(seg[i]), 1e-9)) * seg[i]
+            remaining, i, ti = remaining - left, i + 1, 0.0
+        return self.path[-1]
+
+    @staticmethod
+    def _wrap(a):
+        return float(np.arctan2(np.sin(a), np.cos(a)))
+
+    def __call__(self, base_xy: np.ndarray, yaw: float) -> np.ndarray:
+        target, d_goal = self._lookahead(base_xy), float(np.linalg.norm(self.path[-1] - base_xy))
+        R = np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
+        if d_goal < 0.1:
+            v, yaw_err = np.zeros(2), 0.0 if self.goal_yaw is None else self._wrap(self.goal_yaw - yaw)
+        else:
+            v = self.k_v * (R.T @ (target - base_xy))
+            v *= min(1.0, self.v_max / max(np.linalg.norm(v), 1e-9))
+            heading = float(np.arctan2(*(target - base_xy)[::-1]))
+            yaw_err = self._wrap((self.goal_yaw if d_goal < 0.5 and self.goal_yaw is not None else heading) - yaw)
+        # a goal straight behind the robot wraps between +pi and -pi: keep the turn direction once chosen
+        if abs(yaw_err) > 2.6 and self.turn_sign is None:
+            self.turn_sign = np.sign(yaw_err) or 1.0
+        if self.turn_sign is not None:
+            yaw_err = self.turn_sign * abs(yaw_err)
+            if abs(yaw_err) < 0.5:
+                self.turn_sign = None
+        a = np.zeros(12, dtype=np.float32)
+        a[0:3] = base_velocity_to_command([v[0], v[1], np.clip(self.k_w * yaw_err, -self.w_max, self.w_max)], self.policy, yaw - self.init_yaw)
+        a[MODE_INDEX] = 1.0
+        return a
+
+
+class SmolVLAPolicy:
+    """lerobot/smolvla_robocasa through lerobot's own pre/post-processing pipeline (saved camera map)."""
+
+    def __init__(self, task: str, device: str = "cuda"):
+        from lerobot.configs.policies import PreTrainedConfig
+        from lerobot.envs.configs import RoboCasaEnv as RoboCasaEnvConfig
+        from lerobot.policies.factory import make_policy, make_pre_post_processors
+
+        cfg = PreTrainedConfig.from_pretrained(POLICY_PATH)
+        cfg.pretrained_path, cfg.device = POLICY_PATH, device
+        env_cfg = RoboCasaEnvConfig(task=task)
+        self.policy = make_policy(cfg=cfg, env_cfg=env_cfg, rename_map=RENAME_MAP).eval()
+        self.pre, self.post = make_pre_post_processors(policy_cfg=cfg, pretrained_path=POLICY_PATH, preprocessor_overrides={"device_processor": {"device": device}})
+        self.env_pre, self.env_post = env_cfg.get_env_processors()
+        self.reset()
+
+    def reset(self):
+        for p in (self.policy, self.pre, self.post):
+            p.reset()
+
+    def __call__(self, obs: dict, language: str) -> np.ndarray:
+        import torch
+        from lerobot.envs.utils import preprocess_observation
+        from lerobot.utils.constants import ACTION
+
+        observation = preprocess_observation({"pixels": {k: v[None] for k, v in obs["pixels"].items()}, "agent_pos": np.asarray(obs["agent_pos"])[None]})
+        observation["task"] = [language]
+        observation = self.pre(self.env_pre(observation))
+        with torch.inference_mode():
+            action = self.policy.select_action(observation)
+        return self.env_post({ACTION: self.post(action)})[ACTION].cpu().numpy()[0].astype(np.float32)
+
+
+# ---------------------------------------------------------------------- mission runner
+
+
+class MissionRunner:
+    """Run the plan's segments: follower for NAVIGATION, SmolVLA for VLA; new epoch at every segment switch."""
+
+    def __init__(self, env: SafetyFilterEnv, *, vla: SmolVLAPolicy | None, on_frame=None):
+        self.env, self.vla, self.on_frame = env, vla, on_frame
+
+    def run(self, obs) -> tuple[bool, bool]:
+        env = self.env
+        success = stalled = False
+        max_steps = env.env._max_episode_steps
+        while env.tick < max_steps:
+            seg = env.segment
+            follower = NavFollower(seg.path_polyline_xy, seg.goal_yaw, init_yaw=env.init_yaw, policy=env.policy) if seg.kind == NAVIGATION else None
+            if seg.kind == VLA and self.vla is None:
+                raise RuntimeError("a VLA segment needs the smolvla nominal")
+            if self.vla is not None:
+                self.vla.reset()
+            seg_steps, epoch = 0, env.epoch
+            while env.tick < max_steps and (seg.max_steps is None or seg_steps < seg.max_steps):
+                if follower is not None and env.epoch != epoch:  # replanned path: fresh follower on it
+                    follower, epoch = NavFollower(seg.path_polyline_xy, seg.goal_yaw, init_yaw=env.init_yaw, policy=env.policy), env.epoch
+                if follower is not None:
+                    st = env.robot_state()
+                    action = follower(st.base_position[:2], float(np.arctan2(st.base_rotation[1, 0], st.base_rotation[0, 0])))
+                else:
+                    action = self.vla(obs, seg.goal_text)
+                obs, _, terminated, _, info = env.step(action)
+                seg_steps += 1
+                if self.on_frame is not None:
+                    self.on_frame(env)
+                if env.segment_done():
+                    break
+                if env.stalled():
+                    stalled = True
+                    break
+                if terminated and not info.get("is_success"):
+                    break
+            if stalled or not env.segment_done():
+                break
+            if env.segment_index + 1 >= len(env.segments):
+                success = True  # every plan segment completed (the same plan for every arm)
+                break
+            env.begin_segment(env.segment_index + 1)
+        env.task_success_robocasa = bool(env.rs._check_success())
+        return success, stalled
+
+
+def run_episode(*, task: str, seed: int, arms: Sequence[str], nominal: str, classifier: str, out_dir: Path, plan_path: str | None = None, env_kwargs: dict | None = None, max_steps: int | None = None, graph_noise: dict | None = None, video: bool = False) -> list[dict]:
+    """Run every arm of one (task, seed) in this process; each arm hard-resets the kitchen from the same seed (identical scene, fresh controllers)."""
+    import sesame_lite.tasks  # noqa: F401  (registers the task variants with robosuite)
+    from sesame_lite.planner import load_plan
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    plan = load_plan(plan_path) if plan_path else None
+    if plan:  # the plan carries the task, its kitchen kwargs and the horizon; the CLI may override kwargs
+        task = plan.get("task", task)
+        env_kwargs = {**plan.get("env_kwargs", {}), **(env_kwargs or {})}
+        max_steps = max_steps or plan.get("horizon")
+    base_env = SesameRoboCasaEnv(task, env_kwargs=env_kwargs, episode_length=max_steps)
+    vla, results, snapshots = None, [], set()
+    for arm in arms:
+        t0 = time.time()
+        env = SafetyFilterEnv(base_env, arm=arm, classifier=classifier, graph_noise=graph_noise)
+        obs, _ = env.reset(seed=seed, plan=plan)
+        snapshots.add(env.oracle_graph.snapshot_id)
+        if vla is None and (nominal == "smolvla" or any(s.kind == VLA for s in env.segments)):
+            vla = SmolVLAPolicy(task)
+        recorder = None
+        if video:
+            from sesame_lite.viz import EpisodeRecorder
+
+            recorder = EpisodeRecorder(env)
+        success, stalled = MissionRunner(env, vla=vla, on_frame=recorder).run(obs)
+        result = {"task": task, "seed": seed, "nominal": nominal, "classifier": classifier, "wall_s": time.time() - t0, **env.summary(success, stalled)}
+        stem = f"{task}_s{seed}_{arm.replace('+', 'plus')}"
+        env.dump(out_dir / f"{stem}.json", result)
+        if recorder is not None:
+            recorder.finish(result)
+            recorder.save(out_dir / f"{stem}.mp4")
+            del recorder
+        results.append(result)
+    if len(snapshots) > 1:
+        print(f"WARNING: scene differed across arms for seed {seed}: {sorted(snapshots)}")
+    base_env.close()
+    return results

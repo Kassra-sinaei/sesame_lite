@@ -1,0 +1,10 @@
+{
+  "mission": "close_cabinet",
+  "task": "CloseCabinet",
+  "description": "CloseCabinet with the VLA. The articulated part the task must touch (door/drawer and its handle) is task-contact exempt; the fixture body, neighbouring fixtures and objects are not.",
+  "env_kwargs": {"split": "target"},
+  "roles": {"target": {"fixture_ref": "fxtr"}},
+  "segments": [
+    {"kind": "VLA", "skill": "close", "targets": ["target"], "exempt": [{"role": "target", "parts": ["hingedoor","door","freezer","fridge_door"]}], "done": {"check": "task_success"}}
+  ]
+}

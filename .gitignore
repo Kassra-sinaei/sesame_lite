@@ -1,0 +1,6 @@
+outputs/
+__pycache__/
+*.egg-info/
+*.mp4
+*.log
+.ipynb_checkpoints/
