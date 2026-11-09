@@ -39,25 +39,24 @@ def _quat_xyzw_to_mat(q):
 
 
 def fragment_roles(env) -> dict[str, str]:
-    """Role of every fragment of the current segment, for colouring."""
+    """Role of every scene-graph box in the current segment, for colouring."""
     seg, bundle = env.segment, env.bundle
     roles = {}
     rows = set(env.row_ids)
-    for node in env.graph.obstacle_nodes():
-        label = bundle.labels.get(node.node_id)
-        for fid, frag in node.fragments().items():
-            if fid in rows:
-                roles[fid] = "passive" if env.arm == "A" else "row"
-            elif node.node_id in seg.exempt_parts and (not seg.exempt_parts[node.node_id] or any(s in fid for s in seg.exempt_parts[node.node_id])):
-                roles[fid] = "exempt"
-            elif label == "passable":
-                roles[fid] = "passable"
-            elif label == "irrelevant":
-                roles[fid] = "irrelevant"
-            elif node.node_id in bundle.candidate_ids:
-                roles[fid] = "row" if env.arm != "A" else "passive"
-            else:
-                roles[fid] = "outside"
+    for nid in env.graph.nodes:
+        label = bundle.labels.get(nid)
+        if nid in rows:
+            roles[nid] = "passive" if env.arm == "A" else "row"
+        elif nid in seg.exempt_ids:
+            roles[nid] = "exempt"
+        elif label == "passable":
+            roles[nid] = "passable"
+        elif label == "irrelevant":
+            roles[nid] = "irrelevant"
+        elif nid in bundle.candidate_ids:
+            roles[nid] = "row" if env.arm != "A" else "passive"
+        else:
+            roles[nid] = "outside"
     return roles
 
 
@@ -119,8 +118,8 @@ class WorldRenderer:
         if overlays:
             roles = fragment_roles(env)
             for node in env.graph.obstacle_nodes():
-                for fid, frag in node.fragments().items():
-                    self._add(mujoco.mjtGeom.mjGEOM_BOX, frag.half_extents, frag.center, frag.rotation, RGBA[roles[fid]])
+                frag = node.fragment()
+                self._add(mujoco.mjtGeom.mjGEOM_BOX, frag.half_extents, frag.center, frag.rotation, RGBA[roles[node.node_id]])
             seg = env.segment
             if seg.kind == NAVIGATION and env.bundle.corridor_radius_m:
                 path = seg.path_polyline_xy
@@ -162,9 +161,10 @@ class EpisodeRecorder:
         if env.tick % self.every:
             return
         frame = Image.fromarray(self.world.render())
-        cam = env.rs._get_observations().get("robot0_agentview_left_image")
+        # the exact frame the policy received at the last step (no second render)
+        cam = getattr(env.env, "last_raw_obs", {}).get("video.robot0_agentview_left")
         if cam is not None:
-            inset = Image.fromarray(np.ascontiguousarray(cam[::-1])).resize((frame.width // 4, frame.width // 4))
+            inset = Image.fromarray(np.ascontiguousarray(cam)).resize((frame.width // 4, frame.width // 4))
             frame.paste(inset, (frame.width - inset.width - 8, 52))
         rec, gt = env.receipts[-1], env.ground_truth[-1]
         draw = ImageDraw.Draw(frame, "RGBA")
@@ -184,13 +184,14 @@ class EpisodeRecorder:
         """Hold the last frame with a banner stating the outcome."""
         if not self.frames:
             return
-        n_contact, nodes = result["contact_ticks"], [n.split(":", 1)[1].split("_main")[0].split("_group")[0] for n in result["contact_nodes"]]
+        category = {nid: n.category for nid, n in self.env.graph.nodes.items()}
+        n_contact, nodes = result["contact_ticks"], [category.get(n, n) for n in result["contact_nodes"]]
         if result["outcome"] == "success":
             text, color = "GOAL REACHED  -  no contact", (40, 160, 90)
         elif result["outcome"] == "success_but_unsafe":
             text, color = f"GOAL REACHED  -  UNSAFE: {n_contact} contact ticks ({', '.join(sorted(set(nodes))[:2]) or 'margin violated'})", (200, 60, 50)
         elif result["outcome"] == "stalled":
-            blocker = (self.env.receipts[-1]["h_min_row"] or "").split(":", 2)[-1].split("/")[0].split(":", 1)[-1]
+            blocker = category.get((self.env.receipts[-1]["h_min_row"] or "").split(":", 2)[-1], "?")  # row id = family:protected:node
             text, color = f"STALLED  -  blocked by '{blocker}'", (210, 130, 30)
         else:
             text, color = result["outcome"].replace("_", " ").upper(), (120, 120, 120)

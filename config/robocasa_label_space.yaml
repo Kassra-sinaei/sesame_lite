@@ -1,0 +1,186 @@
+---
+total_semantic_labels: 173
+dynamic_labels: []
+invalid_labels: [0]
+object_labels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+  30, 31, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+  61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
+  91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116,
+  117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140,
+  141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
+  165, 166, 167, 168, 169, 170, 171, 172]
+surface_places_labels: [34]
+label_names:
+- {label: 0, name: unknown, name_descriptive: an unknown}
+- {label: 1, name: accessory, name_descriptive: an accessory}
+- {label: 2, name: blender, name_descriptive: a blender}
+- {label: 3, name: blender lid, name_descriptive: a blender lid}
+- {label: 4, name: box, name_descriptive: a box}
+- {label: 5, name: cabinet, name_descriptive: a cabinet}
+- {label: 6, name: coffee machine, name_descriptive: a coffee machine}
+- {label: 7, name: counter, name_descriptive: a counter}
+- {label: 8, name: dish rack, name_descriptive: a dish rack}
+- {label: 9, name: dishwasher, name_descriptive: a dishwasher}
+- {label: 10, name: drawer, name_descriptive: a drawer}
+- {label: 11, name: electric kettle, name_descriptive: an electric kettle}
+- {label: 12, name: fridge, name_descriptive: a fridge}
+- {label: 13, name: fridge bottom freezer, name_descriptive: a fridge bottom freezer}
+- {label: 14, name: fridge french door, name_descriptive: a fridge french door}
+- {label: 15, name: fridge side by side, name_descriptive: a fridge side by side}
+- {label: 16, name: hinge cabinet, name_descriptive: a hinge cabinet}
+- {label: 17, name: hood, name_descriptive: a hood}
+- {label: 18, name: housing cabinet, name_descriptive: a housing cabinet}
+- {label: 19, name: microwave, name_descriptive: a microwave}
+- {label: 20, name: open cabinet, name_descriptive: an open cabinet}
+- {label: 21, name: oven, name_descriptive: an oven}
+- {label: 22, name: panel cabinet, name_descriptive: a panel cabinet}
+- {label: 23, name: single cabinet, name_descriptive: a single cabinet}
+- {label: 24, name: sink, name_descriptive: a sink}
+- {label: 25, name: stand mixer, name_descriptive: a stand mixer}
+- {label: 26, name: stool, name_descriptive: a stool}
+- {label: 27, name: stove, name_descriptive: a stove}
+- {label: 28, name: stovetop, name_descriptive: a stovetop}
+- {label: 29, name: toaster, name_descriptive: a toaster}
+- {label: 30, name: toaster oven, name_descriptive: a toaster oven}
+- {label: 31, name: wall, name_descriptive: a wall}
+- {label: 32, name: wall accessory, name_descriptive: a wall accessory}
+- {label: 33, name: window, name_descriptive: a window}
+- {label: 34, name: floor, name_descriptive: a floor}
+- {label: 35, name: aluminum foil, name_descriptive: an aluminum foil}
+- {label: 36, name: apple, name_descriptive: an apple}
+- {label: 37, name: avocado, name_descriptive: an avocado}
+- {label: 38, name: bagel, name_descriptive: a bagel}
+- {label: 39, name: bagged food, name_descriptive: a bagged food}
+- {label: 40, name: baguette, name_descriptive: a baguette}
+- {label: 41, name: banana, name_descriptive: a banana}
+- {label: 42, name: bar, name_descriptive: a bar}
+- {label: 43, name: bar soap, name_descriptive: a bar soap}
+- {label: 44, name: basket, name_descriptive: a basket}
+- {label: 45, name: beer, name_descriptive: a beer}
+- {label: 46, name: bell pepper, name_descriptive: a bell pepper}
+- {label: 47, name: blender jug, name_descriptive: a blender jug}
+- {label: 48, name: bottled drink, name_descriptive: a bottled drink}
+- {label: 49, name: bottled water, name_descriptive: a bottled water}
+- {label: 50, name: bowl, name_descriptive: a bowl}
+- {label: 51, name: boxed drink, name_descriptive: a boxed drink}
+- {label: 52, name: boxed food, name_descriptive: a boxed food}
+- {label: 53, name: bread, name_descriptive: a bread}
+- {label: 54, name: bread flat, name_descriptive: a bread flat}
+- {label: 55, name: broccoli, name_descriptive: a broccoli}
+- {label: 56, name: cake, name_descriptive: a cake}
+- {label: 57, name: can, name_descriptive: a can}
+- {label: 58, name: candle, name_descriptive: a candle}
+- {label: 59, name: canned food, name_descriptive: a canned food}
+- {label: 60, name: carrot, name_descriptive: a carrot}
+- {label: 61, name: cereal, name_descriptive: a cereal}
+- {label: 62, name: cheese, name_descriptive: a cheese}
+- {label: 63, name: cheese grater, name_descriptive: a cheese grater}
+- {label: 64, name: chicken drumstick, name_descriptive: a chicken drumstick}
+- {label: 65, name: chips, name_descriptive: a chips}
+- {label: 66, name: chocolate, name_descriptive: a chocolate}
+- {label: 67, name: cinnamon, name_descriptive: a cinnamon}
+- {label: 68, name: coffee cup, name_descriptive: a coffee cup}
+- {label: 69, name: colander, name_descriptive: a colander}
+- {label: 70, name: condiment bottle, name_descriptive: a condiment bottle}
+- {label: 71, name: cookie dough ball, name_descriptive: a cookie dough ball}
+- {label: 72, name: corn, name_descriptive: a corn}
+- {label: 73, name: cream cheese stick, name_descriptive: a cream cheese stick}
+- {label: 74, name: croissant, name_descriptive: a croissant}
+- {label: 75, name: cucumber, name_descriptive: a cucumber}
+- {label: 76, name: cup, name_descriptive: a cup}
+- {label: 77, name: cupcake, name_descriptive: a cupcake}
+- {label: 78, name: cutting board, name_descriptive: a cutting board}
+- {label: 79, name: digital scale, name_descriptive: a digital scale}
+- {label: 80, name: dish brush, name_descriptive: a dish brush}
+- {label: 81, name: donut, name_descriptive: a donut}
+- {label: 82, name: egg, name_descriptive: an egg}
+- {label: 83, name: eggplant, name_descriptive: an eggplant}
+- {label: 84, name: fish, name_descriptive: a fish}
+- {label: 85, name: flour bag, name_descriptive: a flour bag}
+- {label: 86, name: fork, name_descriptive: a fork}
+- {label: 87, name: garlic, name_descriptive: a garlic}
+- {label: 88, name: glass cup, name_descriptive: a glass cup}
+- {label: 89, name: honey bottle, name_descriptive: a honey bottle}
+- {label: 90, name: hot dog, name_descriptive: a hot dog}
+- {label: 91, name: hotdog bun, name_descriptive: a hotdog bun}
+- {label: 92, name: ice cube, name_descriptive: an ice cube}
+- {label: 93, name: ice cube tray, name_descriptive: an ice cube tray}
+- {label: 94, name: jam, name_descriptive: a jam}
+- {label: 95, name: jar, name_descriptive: a jar}
+- {label: 96, name: jug, name_descriptive: a jug}
+- {label: 97, name: jug wide opening, name_descriptive: a jug wide opening}
+- {label: 98, name: juice, name_descriptive: a juice}
+- {label: 99, name: kebab skewer, name_descriptive: a kebab skewer}
+- {label: 100, name: ketchup, name_descriptive: a ketchup}
+- {label: 101, name: kettle non electric, name_descriptive: a kettle non electric}
+- {label: 102, name: kiwi, name_descriptive: a kiwi}
+- {label: 103, name: knife, name_descriptive: a knife}
+- {label: 104, name: ladle, name_descriptive: a ladle}
+- {label: 105, name: lemon, name_descriptive: a lemon}
+- {label: 106, name: lemon wedge, name_descriptive: a lemon wedge}
+- {label: 107, name: lettuce, name_descriptive: a lettuce}
+- {label: 108, name: lime, name_descriptive: a lime}
+- {label: 109, name: liquor, name_descriptive: a liquor}
+- {label: 110, name: mango, name_descriptive: a mango}
+- {label: 111, name: marshmallow, name_descriptive: a marshmallow}
+- {label: 112, name: mayonnaise, name_descriptive: a mayonnaise}
+- {label: 113, name: measuring cup, name_descriptive: a measuring cup}
+- {label: 114, name: milk, name_descriptive: a milk}
+- {label: 115, name: mug, name_descriptive: a mug}
+- {label: 116, name: mushroom, name_descriptive: a mushroom}
+- {label: 117, name: mustard, name_descriptive: a mustard}
+- {label: 118, name: oil and vinegar bottle, name_descriptive: an oil and vinegar bottle}
+- {label: 119, name: onion, name_descriptive: an onion}
+- {label: 120, name: orange, name_descriptive: an orange}
+- {label: 121, name: oven tray, name_descriptive: an oven tray}
+- {label: 122, name: pan, name_descriptive: a pan}
+- {label: 123, name: pancake, name_descriptive: a pancake}
+- {label: 124, name: paprika, name_descriptive: a paprika}
+- {label: 125, name: peach, name_descriptive: a peach}
+- {label: 126, name: pear, name_descriptive: a pear}
+- {label: 127, name: peeler, name_descriptive: a peeler}
+- {label: 128, name: pickle slice, name_descriptive: a pickle slice}
+- {label: 129, name: pitcher, name_descriptive: a pitcher}
+- {label: 130, name: pizza, name_descriptive: a pizza}
+- {label: 131, name: pizza cutter, name_descriptive: a pizza cutter}
+- {label: 132, name: placemat, name_descriptive: a placemat}
+- {label: 133, name: plate, name_descriptive: a plate}
+- {label: 134, name: pot, name_descriptive: a pot}
+- {label: 135, name: potato, name_descriptive: a potato}
+- {label: 136, name: reamer, name_descriptive: a reamer}
+- {label: 137, name: rolling pin, name_descriptive: a rolling pin}
+- {label: 138, name: salt and pepper shaker, name_descriptive: a salt and pepper shaker}
+- {label: 139, name: sandwich bread, name_descriptive: a sandwich bread}
+- {label: 140, name: saucepan, name_descriptive: a saucepan}
+- {label: 141, name: saucepan lid, name_descriptive: a saucepan lid}
+- {label: 142, name: saucepan with lid, name_descriptive: a saucepan with lid}
+- {label: 143, name: scissors, name_descriptive: a scissors}
+- {label: 144, name: shaker, name_descriptive: a shaker}
+- {label: 145, name: shrimp, name_descriptive: a shrimp}
+- {label: 146, name: soap dispenser, name_descriptive: a soap dispenser}
+- {label: 147, name: spatula, name_descriptive: a spatula}
+- {label: 148, name: sponge, name_descriptive: a sponge}
+- {label: 149, name: spoon, name_descriptive: a spoon}
+- {label: 150, name: spray, name_descriptive: a spray}
+- {label: 151, name: squash, name_descriptive: a squash}
+- {label: 152, name: steak, name_descriptive: a steak}
+- {label: 153, name: strainer, name_descriptive: a strainer}
+- {label: 154, name: straw, name_descriptive: a straw}
+- {label: 155, name: sugar cube, name_descriptive: a sugar cube}
+- {label: 156, name: sweet potato, name_descriptive: a sweet potato}
+- {label: 157, name: syrup bottle, name_descriptive: a syrup bottle}
+- {label: 158, name: tangerine, name_descriptive: a tangerine}
+- {label: 159, name: teapot, name_descriptive: a teapot}
+- {label: 160, name: tomato, name_descriptive: a tomato}
+- {label: 161, name: tomato slice, name_descriptive: a tomato slice}
+- {label: 162, name: tongs, name_descriptive: a tongs}
+- {label: 163, name: tray, name_descriptive: a tray}
+- {label: 164, name: tupperware, name_descriptive: a tupperware}
+- {label: 165, name: turkey slice, name_descriptive: a turkey slice}
+- {label: 166, name: turmeric, name_descriptive: a turmeric}
+- {label: 167, name: waffle, name_descriptive: a waffle}
+- {label: 168, name: water bottle, name_descriptive: a water bottle}
+- {label: 169, name: whisk, name_descriptive: a whisk}
+- {label: 170, name: wine, name_descriptive: a wine}
+- {label: 171, name: wooden spoon, name_descriptive: a wooden spoon}
+- {label: 172, name: yogurt, name_descriptive: a yogurt}

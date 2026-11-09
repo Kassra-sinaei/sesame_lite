@@ -1,10 +1,10 @@
 {
   "mission": "close_drawer",
   "task": "CloseDrawer",
-  "description": "CloseDrawer with the VLA. The articulated part the task must touch (door/drawer and its handle) is task-contact exempt; the fixture body, neighbouring fixtures and objects are not.",
+  "description": "CloseDrawer with the VLA. The target fixture is task-contact exempt (one scene-graph box); neighbouring fixtures and objects are not.",
   "env_kwargs": {"split": "target"},
   "roles": {"target": {"fixture_ref": "drawer"}},
   "segments": [
-    {"kind": "VLA", "skill": "close", "targets": ["target"], "exempt": [{"role": "target", "parts": ["inner_box","handle"]}], "done": {"check": "task_success"}}
+    {"kind": "VLA", "skill": "close", "targets": ["target"], "exempt": [{"role": "target"}], "done": {"check": "task_success"}}
   ]
 }

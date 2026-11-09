@@ -1,13 +1,23 @@
-"""Oracle 3D scene graph captured from a RoboCasa (robosuite/MuJoCo) kitchen.
+"""Oracle 3D scene graph, written in MIT-SPARK Hydra's format (spark_dsg).
 
-Mirrors the OmniGibson oracle adapter of signal_3d: one node per fixture and
-per free object with a category, a pose and an oriented bounding box. The box
-is the *source of constraint geometry* for the filter and the node list is the
-planner's world state. A fixture node carries one *part* per MuJoCo body that
-has collision geometry (cabinet body, hinged door, drawer box, fridge doors)
-so that rows and contact exemptions are per part; the node's own box is the
-union of its parts. Floors and wall backings are dropped like ceilings and
-floors were in the OmniGibson capture; walls stay as obstacles.
+``capture_scene_graph(rs_env)`` reads ground truth from MuJoCo and builds the graph a Hydra run would output:
+
+    OBJECTS    one node per fixture and per free object, ids O(0), O(1), ...
+               semantic_label (config/robocasa_label_space.yaml), an axis-aligned bounding_box,
+               position = box center, name left empty (Hydra's mesh segmenter does not set it)
+    PLACES     free-space nodes p(k) on a 0.5 m grid over the floor; distance = clearance to the nearest object
+    ROOMS      R(0), the kitchen
+    BUILDINGS  B(0)
+    AGENTS     a(0), the robot pose at capture time (partition 'a', as Hydra's pose-graph tracker writes it)
+
+    edges: place-place (grid neighbours), object-place (nearest place), place-room, room-building
+
+Ids come from sorting the boxes by position (fixtures first), so an id says nothing about the task.
+
+Two things come out of a capture:
+- ``SceneGraph``: a small reader over the Hydra graph. The planner, the classifier and the safety filter use only this.
+- ``OracleLookup``: which node is which RoboCasa fixture/object and which MuJoCo bodies belong to it. Only the
+  evaluation side uses it (contact checks, ground truth, the hand-written reference plans); no model ever sees it.
 """
 
 from __future__ import annotations
@@ -15,145 +25,188 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import json
+from pathlib import Path
 import re
 from typing import Iterable
 
 import mujoco
 import numpy as np
+import spark_dsg as dsg
+import yaml
 
 from sesame_lite.geometry.fragments import OrientedBoxFragment
 
-MINIMUM_HALF_EXTENT_M = 0.0005  # 1 mm minimum extent, as in the OmniGibson capture
+LABEL_SPACE_FILE = Path(__file__).resolve().parents[2] / "config" / "robocasa_label_space.yaml"
+PLACE_SPACING_M = 0.5
+PLACE_HEIGHT_M = 0.3  # places sit at base height, like a ground robot's free-space layer
+PLACE_MIN_CLEARANCE_M = 0.2  # a grid point closer than this to an object is not free space
+AGENT_LAYER, ROBOT_PARTITION = 2, ord("a")  # Hydra: agents are layer 2 under the robot's prefix partition
+
+MINIMUM_HALF_EXTENT_M = 0.0005
 COLLISION_GEOM_GROUP = 0  # robosuite convention: group 0 collision, group 1 visual
-MARKER_GEOM_MAX_SIZE_M = 0.015  # RoboCasa fixtures carry 1 cm marker boxes (e.g. counter "base_*") far from the body
+MARKER_GEOM_MAX_SIZE_M = 0.015  # RoboCasa fixtures carry 1 cm marker boxes far from the body
 MAX_GEOM_OFFSET_M = 3.0
-ROUND = 4  # canonical rounding (1e-4 m) for snapshot ids
+ROUND = 4  # rounding (0.1 mm) for the snapshot id
 
-_SKIP_FIXTURE_CLASSES = {"Floor"}
-_SKIP_NAME_PATTERNS = (re.compile(r"_backing_"),)
-
-
-def _snake(name: str) -> str:
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+SKIP_FIXTURE_CLASSES = {"Floor"}  # the floor is the surface the places stand on, not an object
+SKIP_NAME_PATTERNS = (re.compile(r"_backing_"),)
 
 
-def _wxyz_to_xyzw(q: np.ndarray) -> tuple[float, float, float, float]:
-    w, x, y, z = (float(v) for v in q)
-    return (x, y, z, w)
+# --------------------------------------------------------------------------- label space
+
+
+def class_words(class_name: str) -> str:
+    """RoboCasa class name -> label name: HingeCabinet -> hinge cabinet (same rule as scripts/make_label_space.py)."""
+    return re.sub(r"(?<!^)(?=[A-Z])", " ", class_name).lower()
+
+
+@dataclass
+class LabelSpace:
+    names: dict[int, str]  # label -> name
+    floor_label: int
+
+    @classmethod
+    def load(cls, path: Path = LABEL_SPACE_FILE) -> "LabelSpace":
+        data = yaml.safe_load(Path(path).read_text())
+        names = {e["label"]: e["name"] for e in data["label_names"]}
+        return cls(names=names, floor_label=data["surface_places_labels"][0])
+
+    def label_of(self, name: str) -> int:
+        for label, n in self.names.items():
+            if n == name:
+                return label
+        return 0  # unknown
+
+    def is_fixture_label(self, label: int) -> bool:
+        """Fixture classes come before 'floor' in the file (static furniture, as in a prior map)."""
+        return 0 < label < self.floor_label
+
+    def sha256(self) -> str:
+        return hashlib.sha256(LABEL_SPACE_FILE.read_bytes()).hexdigest()
+
+
+# --------------------------------------------------------------------------- reading the graph
 
 
 @dataclass(frozen=True)
-class Part:
-    part_id: str  # "<node_id>/part:<body>"
-    body: str
+class SceneObject:
+    """One OBJECTS-layer node as the rest of the code sees it."""
+
+    node_id: str  # Hydra symbol, "O(12)"
+    label: int
+    category: str  # the label's name
     center: tuple[float, float, float]
-    orientation_xyzw: tuple[float, float, float, float]
     half_extents: tuple[float, float, float]
-
-    def fragment(self, node_id: str) -> OrientedBoxFragment:
-        return OrientedBoxFragment(parent_stable_id=node_id, fragment_id=self.part_id, center=self.center, orientation_xyzw=self.orientation_xyzw, half_extents=self.half_extents)
-
-    def as_dict(self) -> dict:
-        return {"part_id": self.part_id, "body": self.body, "center": [round(v, ROUND) for v in self.center], "orientation_xyzw": [round(v, ROUND) for v in self.orientation_xyzw], "half_extents": [round(v, ROUND) for v in self.half_extents]}
-
-
-@dataclass(frozen=True)
-class SceneNode:
-    node_id: str
-    kind: str  # "fixture" | "object" | "robot"
-    category: str
-    name: str  # natural-language name for the planner/classifier
-    center: tuple[float, float, float]  # union box (axis-aligned) of the parts
-    half_extents: tuple[float, float, float]
-    parts: tuple[Part, ...]
-    source: str
+    kind: str = "object"  # Hydra has no fixture/object split; kept for the classifier's request format
 
     @property
     def extent(self) -> tuple[float, float, float]:
         return tuple(2.0 * h for h in self.half_extents)
 
-    def classifier_name(self) -> str:
-        x, y, z = self.extent
-        return f"{self.category} (approx {x:.2f} x {y:.2f} x {z:.2f} m box)"
-
     def aabb(self) -> tuple[np.ndarray, np.ndarray]:
         c, h = np.asarray(self.center), np.asarray(self.half_extents)
         return c - h, c + h
 
-    def fragments(self) -> dict[str, OrientedBoxFragment]:
-        return {p.part_id: p.fragment(self.node_id) for p in self.parts}
+    def classifier_name(self) -> str:
+        x, y, z = self.extent
+        return f"{self.category} (approx {x:.2f} x {y:.2f} x {z:.2f} m box)"
 
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "node_id": self.node_id,
-            "kind": self.kind,
-            "category": self.category,
-            "name": self.name,
-            "center": [round(v, ROUND) for v in self.center],
-            "half_extents": [round(v, ROUND) for v in self.half_extents],
-            "parts": [p.as_dict() for p in self.parts],
-            "source": self.source,
-        }
+    def fragment(self) -> OrientedBoxFragment:
+        """The node's box as one barrier fragment (fragment id = node id)."""
+        return OrientedBoxFragment(parent_stable_id=self.node_id, fragment_id=self.node_id, center=self.center, orientation_xyzw=(0.0, 0.0, 0.0, 1.0), half_extents=self.half_extents)
+
+    def as_dict(self) -> dict:
+        return {"node_id": self.node_id, "label": self.label, "category": self.category,
+                "center": [round(v, ROUND) for v in self.center], "half_extents": [round(v, ROUND) for v in self.half_extents]}
 
 
-@dataclass
-class OracleSceneGraph:
-    nodes: dict[str, SceneNode]
-    task_language: str
-    edges: list[dict] = field(default_factory=list)  # {"rel": "on"|"inside", "src": object id, "dst": fixture id}
-    robot_node_id: str = "robot:robot0"
-    meta: dict[str, object] = field(default_factory=dict)
+class SceneGraph:
+    """Reader over a Hydra DynamicSceneGraph: objects, places, rooms and the robot pose."""
+
+    def __init__(self, graph: dsg.DynamicSceneGraph, labels: LabelSpace):
+        self.dsg, self.labels = graph, labels
+        self.nodes: dict[str, SceneObject] = {}
+        for node in graph.get_layer(dsg.DsgLayers.OBJECTS).nodes:
+            a = node.attributes
+            bb = a.bounding_box
+            self.nodes[str(node.id)] = SceneObject(
+                node_id=str(node.id), label=int(a.semantic_label), category=labels.names.get(int(a.semantic_label), "unknown"),
+                center=tuple(float(v) for v in bb.world_P_center), half_extents=tuple(float(max(v / 2, MINIMUM_HALF_EXTENT_M)) for v in bb.dimensions))
+        self.places = {str(n.id): (np.asarray(n.attributes.position, dtype=float), float(n.attributes.distance)) for n in graph.get_layer(dsg.DsgLayers.PLACES).nodes}
+        self.rooms = [str(n.id) for n in graph.get_layer(dsg.DsgLayers.ROOMS).nodes]
+        agent = next(iter(graph.get_layer(AGENT_LAYER, ROBOT_PARTITION).nodes))
+        q = agent.attributes.world_R_body
+        self.robot_xy = np.asarray(agent.attributes.position, dtype=float)[:2]
+        self.robot_yaw = float(np.arctan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)))
 
     @property
     def snapshot_id(self) -> str:
-        """Hash of the scene geometry (the robot node is state, not scene)."""
-        payload = json.dumps([n.as_dict() for n in self.obstacle_nodes()], sort_keys=True)
+        """Hash of the object layer (labels and boxes)."""
+        payload = json.dumps([n.as_dict() for n in self.nodes.values()], sort_keys=True)
         return "sg:" + hashlib.sha256(payload.encode()).hexdigest()[:16]
 
-    def obstacle_nodes(self) -> list[SceneNode]:
-        return [n for n in self.nodes.values() if n.kind != "robot"]
+    def obstacle_nodes(self) -> list[SceneObject]:
+        return list(self.nodes.values())
+
+    def is_fixture(self, node_id: str) -> bool:
+        return self.labels.is_fixture_label(self.nodes[node_id].label)
 
     def fragments(self) -> dict[str, OrientedBoxFragment]:
-        out = {}
-        for n in self.obstacle_nodes():
-            out.update(n.fragments())
-        return out
+        return {nid: n.fragment() for nid, n in self.nodes.items()}
 
-    def fragment_ids_of(self, node_ids: Iterable[str], *, exempt_parts: dict[str, tuple[str, ...]] | None = None) -> tuple[str, ...]:
-        """Fragment ids of the given nodes; ``exempt_parts[node] = ()`` drops the whole node, otherwise the listed body substrings."""
-        out = []
-        exempt_parts = exempt_parts or {}
-        for nid in node_ids:
-            node = self.nodes.get(nid)
-            if node is None:
-                continue
-            if nid in exempt_parts:
-                pats = exempt_parts[nid]
-                if not pats:
-                    continue
-                out.extend(p.part_id for p in node.parts if not any(s in p.body for s in pats))
-            else:
-                out.extend(p.part_id for p in node.parts)
-        return tuple(out)
+    def fragment_ids_of(self, node_ids: Iterable[str], *, exempt: Iterable[str] = ()) -> tuple[str, ...]:
+        """Fragment ids (= node ids) of the given nodes, without the exempt ones."""
+        exempt = set(exempt)
+        return tuple(nid for nid in node_ids if nid in self.nodes and nid not in exempt)
 
     def aabb_by_id(self) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-        return {n.node_id: n.aabb() for n in self.obstacle_nodes()}
+        return {nid: n.aabb() for nid, n in self.nodes.items()}
 
-    def support_of(self, object_id: str) -> str | None:
-        for e in self.edges:
-            if e["src"] == object_id:
-                return e["dst"]
-        return None
+    def dsg_node(self, node_id: str):
+        """The spark_dsg node behind an id like "O(12)" (to follow Hydra's object -> place -> room links)."""
+        return self.dsg.get_node(dsg.NodeSymbol(*_parse_symbol(node_id)))
 
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "snapshot_id": self.snapshot_id,
-            "task_language": self.task_language,
-            "robot_node_id": self.robot_node_id,
-            "meta": self.meta,
-            "edges": list(self.edges),
-            "nodes": [n.as_dict() for n in self.nodes.values()],
-        }
+    def save(self, path: str | Path) -> None:
+        self.dsg.save(str(path), include_mesh=False)
+
+    def as_dict(self) -> dict:
+        return {"snapshot_id": self.snapshot_id, "format": "spark_dsg (Hydra)", "label_space_sha256": self.labels.sha256(),
+                "robot": {"xy": [round(float(v), ROUND) for v in self.robot_xy], "yaw": round(self.robot_yaw, ROUND)},
+                "nodes": [n.as_dict() for n in self.nodes.values()], "n_places": len(self.places), "rooms": self.rooms}
+
+
+def _parse_symbol(text: str) -> tuple[str, int]:
+    m = re.fullmatch(r"([A-Za-z])\((\d+)\)", text)
+    if m is None:
+        raise KeyError(f"not a node id: {text!r}")
+    return m.group(1), int(m.group(2))
+
+
+# --------------------------------------------------------------------------- ground-truth side
+
+
+@dataclass
+class OracleLookup:
+    """Which Hydra node is which RoboCasa fixture/object. Evaluation only; never shown to a model."""
+
+    node_of: dict[str, str] = field(default_factory=dict)  # "fixture:<robocasa name>" / "object:<name>" -> "O(k)"
+    bodies: dict[str, set[int]] = field(default_factory=dict)  # "O(k)" -> MuJoCo body ids
+    support: dict[str, str] = field(default_factory=dict)  # object node -> node of the fixture RoboCasa placed it on
+    meta: dict = field(default_factory=dict)  # layout/style ids
+
+    def node(self, oracle_name: str | None) -> str | None:
+        return self.node_of.get(oracle_name) if oracle_name else None
+
+    def as_dict(self) -> dict:
+        return {"node_of": dict(self.node_of), "support": dict(self.support), "meta": dict(self.meta)}
+
+
+def fixture_node_id(rs_env, ref) -> str | None:
+    """A RoboCasa fixture object, fixture-ref key or fixture name -> its oracle name "fixture:<name>"."""
+    fx = rs_env.fixture_refs.get(ref) if isinstance(ref, str) and hasattr(rs_env, "fixture_refs") and ref in rs_env.fixture_refs else ref
+    fx = fx[0] if isinstance(fx, tuple) else fx
+    name = getattr(fx, "name", fx)
+    return f"fixture:{name}" if isinstance(name, str) else None
 
 
 # --------------------------------------------------------------------------- MuJoCo helpers
@@ -179,13 +232,7 @@ def _subtree_body_ids(model: mujoco.MjModel, root: int) -> set[int]:
     return ids
 
 
-def _geom_corners_local(model: mujoco.MjModel, gid: int) -> np.ndarray:
-    aabb = model.geom_aabb[gid]
-    signs = np.array([(sx, sy, sz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)], dtype=float)
-    return aabb[None, :3] + signs * aabb[None, 3:]
-
-
-def _collision_geoms(model: mujoco.MjModel, body_ids: Iterable[int], *, data: mujoco.MjData | None = None, anchor: np.ndarray | None = None) -> list[int]:
+def _collision_geoms(model, body_ids: Iterable[int], *, data=None, anchor=None) -> list[int]:
     body_ids = set(body_ids)
     out = []
     for g in range(model.ngeom):
@@ -201,130 +248,145 @@ def _collision_geoms(model: mujoco.MjModel, body_ids: Iterable[int], *, data: mu
     return out
 
 
-def _geoms_world_corners(model, data, gids) -> np.ndarray:
-    pts = []
-    for g in gids:
-        R = data.geom_xmat[g].reshape(3, 3)
-        pts.append(_geom_corners_local(model, g) @ R.T + data.geom_xpos[g][None, :])
-    return np.vstack(pts)
-
-
-def body_part(model, data, node_id: str, body: int, gids: list[int], *, strip_prefix: str = "") -> Part | None:
-    """Oriented box of the geoms of one body, in that body's frame."""
+def _world_box(model, data, gids) -> tuple[np.ndarray, np.ndarray] | None:
+    """World axis-aligned box around the given geoms (corners of each geom's local box, rotated into the world)."""
     if not gids:
         return None
-    Rb, pb = data.xmat[body].reshape(3, 3), data.xpos[body]
-    local = (_geoms_world_corners(model, data, gids) - pb[None, :]) @ Rb
-    lo, hi = local.min(axis=0), local.max(axis=0)
-    half = np.maximum((hi - lo) / 2.0, MINIMUM_HALF_EXTENT_M)
-    center = pb + Rb @ ((lo + hi) / 2.0)
-    bname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body) or f"body{body}"
-    if strip_prefix and bname.startswith(strip_prefix):
-        bname = bname[len(strip_prefix):].lstrip("_") or "object"
-    return Part(part_id=f"{node_id}/part:{bname}", body=bname, center=tuple(float(v) for v in center), orientation_xyzw=_wxyz_to_xyzw(data.xquat[body]), half_extents=tuple(float(v) for v in half))
+    signs = np.array([(sx, sy, sz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)], dtype=float)
+    pts = []
+    for g in gids:
+        local = model.geom_aabb[g][None, :3] + signs * model.geom_aabb[g][None, 3:]
+        pts.append(local @ data.geom_xmat[g].reshape(3, 3).T + data.geom_xpos[g][None, :])
+    pts = np.vstack(pts)
+    return pts.min(axis=0), pts.max(axis=0)
 
 
-def _node(node_id, kind, category, name, parts: list[Part], source) -> SceneNode:
-    corners = []
-    for p in parts:
-        frag = p.fragment(node_id)
-        lo, hi = frag.aabb(3)
-        corners += [lo, hi]
-    lo, hi = np.min(corners, axis=0), np.max(corners, axis=0)
-    return SceneNode(node_id=node_id, kind=kind, category=category, name=name, center=tuple(float(v) for v in (lo + hi) / 2), half_extents=tuple(float(v) for v in np.maximum((hi - lo) / 2, MINIMUM_HALF_EXTENT_M)), parts=tuple(parts), source=source)
+def _distance_to_box(p: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> float:
+    return float(np.linalg.norm(np.maximum(np.maximum(lo - p, p - hi), 0.0)))
 
 
 # --------------------------------------------------------------------------- capture
 
 
-def capture_scene_graph(rs_env, *, include_walls: bool = True) -> OracleSceneGraph:
-    """Build the oracle graph from a live RoboCasa ``Kitchen`` environment (no perception)."""
-
+def capture_scene_graph(rs_env, labels: LabelSpace | None = None) -> tuple[SceneGraph, OracleLookup]:
+    """Read the kitchen from MuJoCo and write it as a Hydra scene graph."""
+    labels = labels or LabelSpace.load()
     model, data = _raw_model(rs_env.sim), _raw_data(rs_env.sim)
-    nodes: dict[str, SceneNode] = {}
 
-    for fx_name, fx in rs_env.fixtures.items():
+    # 1. one box per fixture and per free object, from its collision geoms
+    found = []  # (oracle name, label, lo, hi, body ids)
+    for name, fx in rs_env.fixtures.items():
         cls = type(fx).__name__
-        if cls in _SKIP_FIXTURE_CLASSES or any(p.search(fx_name) for p in _SKIP_NAME_PATTERNS) or (cls == "Wall" and not include_walls):
+        if cls in SKIP_FIXTURE_CLASSES or any(p.search(name) for p in SKIP_NAME_PATTERNS):
             continue
-        root_body = getattr(fx, "root_body", None)
-        root_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, root_body) if root_body else -1
-        if root_id < 0:
+        root = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, fx.root_body) if getattr(fx, "root_body", None) else -1
+        if root < 0:
             continue
-        anchor = np.asarray(fx.pos, dtype=float) if getattr(fx, "pos", None) is not None else data.xpos[root_id]
-        parts = []
-        for body in sorted(_subtree_body_ids(model, root_id)):
-            part = body_part(model, data, f"fixture:{fx_name}", body, _collision_geoms(model, [body], data=data, anchor=anchor), strip_prefix=fx_name)
-            if part is not None:
-                parts.append(part)
-        if not parts:
-            continue
-        category = _snake(cls)
-        nat = getattr(fx, "nat_lang", None)
-        nodes[f"fixture:{fx_name}"] = _node(f"fixture:{fx_name}", "fixture", category, str(nat) if nat else category.replace("_", " "), parts, "fixture_collision_geoms")
-
-    edges = []
+        bodies = _subtree_body_ids(model, root)
+        anchor = np.asarray(fx.pos, dtype=float) if getattr(fx, "pos", None) is not None else data.xpos[root]
+        box = _world_box(model, data, _collision_geoms(model, bodies, data=data, anchor=anchor))
+        if box is not None:
+            found.append((f"fixture:{name}", labels.label_of(class_words(cls)), *box, bodies))
     cfg_by_name = {c.get("name"): c for c in (getattr(rs_env, "object_cfgs", []) or [])}
-    for obj_name, obj in rs_env.objects.items():
-        body = rs_env.obj_body_id[obj_name]
-        part = body_part(model, data, f"object:{obj_name}", body, _collision_geoms(model, _subtree_body_ids(model, body)), strip_prefix=obj_name)
-        if part is None:
-            continue
-        # the sampled asset category (e.g. "placemat"), never the task's instance name, which could leak intent
-        category = str((cfg_by_name.get(obj_name, {}).get("info") or {}).get("cat") or getattr(obj, "category", "object")).replace("_", " ")
-        nodes[f"object:{obj_name}"] = _node(f"object:{obj_name}", "object", category, category, [part], "object_collision_geoms")
-        fixture = (cfg_by_name.get(obj_name, {}).get("placement", {}) or {}).get("fixture")
-        fixture = getattr(fixture, "name", fixture)
-        if fixture and f"fixture:{fixture}" in nodes:
-            edges.append({"rel": "on", "src": f"object:{obj_name}", "dst": f"fixture:{fixture}"})
+    for name in rs_env.objects:
+        bodies = _subtree_body_ids(model, rs_env.obj_body_id[name])
+        box = _world_box(model, data, _collision_geoms(model, bodies))
+        category = (cfg_by_name.get(name, {}).get("info") or {}).get("cat") or getattr(rs_env.objects[name], "category", "")
+        if box is not None:
+            found.append((f"object:{name}", labels.label_of(str(category).replace("_", " ")), *box, bodies))
 
+    # 2. ids by position, so the numbering carries no task information; fixtures first (they never move, so a
+    #    fixture keeps its id when objects are moved and the graph is captured again)
+    found.sort(key=lambda f: (not labels.is_fixture_label(f[1]), *np.round((f[2] + f[3]) / 2, 2), f[1]))
+
+    graph = dsg.DynamicSceneGraph()
+    lookup = OracleLookup()
+    boxes = []
+    for k, (oracle_name, label, lo, hi, bodies) in enumerate(found):
+        attrs = dsg.ObjectNodeAttributes()
+        attrs.semantic_label = label
+        attrs.position = (lo + hi) / 2
+        attrs.bounding_box = dsg.BoundingBox(np.maximum(hi - lo, 2 * MINIMUM_HALF_EXTENT_M).astype(np.float32), ((lo + hi) / 2).astype(np.float32))
+        color = dsg.distinct_150_color(label)  # spark_dsg's label colormap
+        attrs.color = np.array([color.r, color.g, color.b], dtype=np.uint8)
+        graph.add_node(dsg.DsgLayers.OBJECTS, dsg.NodeSymbol("O", k), attrs)
+        node_id = str(dsg.NodeSymbol("O", k))
+        lookup.node_of[oracle_name] = node_id
+        lookup.bodies[node_id] = bodies
+        boxes.append((node_id, lo, hi))
+
+    # 3. places: free grid points over the floor, linked to their grid neighbours
+    lo_xy = np.min([b[1][:2] for b in boxes], axis=0)
+    hi_xy = np.max([b[2][:2] for b in boxes], axis=0)
+    xs = np.arange(lo_xy[0] + PLACE_SPACING_M / 2, hi_xy[0], PLACE_SPACING_M)
+    ys = np.arange(lo_xy[1] + PLACE_SPACING_M / 2, hi_xy[1], PLACE_SPACING_M)
+    place_at, place_xy = {}, {}
+    for i, x in enumerate(xs):
+        for j, y in enumerate(ys):
+            p = np.array([x, y, PLACE_HEIGHT_M])
+            clearance = min(_distance_to_box(p, lo, hi) for _, lo, hi in boxes)
+            if clearance < PLACE_MIN_CLEARANCE_M:
+                continue
+            attrs = dsg.PlaceNodeAttributes()
+            attrs.position, attrs.distance = p, clearance
+            k = len(place_at)
+            graph.add_node(dsg.DsgLayers.PLACES, dsg.NodeSymbol("p", k), attrs)
+            place_at[(i, j)] = dsg.NodeSymbol("p", k)
+            place_xy[k] = p[:2]
+    for (i, j), sym in place_at.items():
+        for nb in ((i + 1, j), (i, j + 1)):
+            if nb in place_at:
+                graph.insert_edge(sym, place_at[nb])
+
+    # 4. each object hangs off its nearest place; places belong to the one room, the room to the building
+    for node_id, lo, hi in boxes:
+        center = (lo[:2] + hi[:2]) / 2
+        nearest = min(place_xy, key=lambda k: float(np.linalg.norm(place_xy[k] - center)))
+        graph.insert_edge(dsg.NodeSymbol(*_parse_symbol(node_id)), dsg.NodeSymbol("p", nearest))
+    room = dsg.RoomNodeAttributes()
+    room.position = np.r_[(lo_xy + hi_xy) / 2, PLACE_HEIGHT_M]
+    graph.add_node(dsg.DsgLayers.ROOMS, dsg.NodeSymbol("R", 0), room)
+    building = dsg.SemanticNodeAttributes()
+    building.position = room.position
+    graph.add_node(dsg.DsgLayers.BUILDINGS, dsg.NodeSymbol("B", 0), building)
+    for sym in place_at.values():
+        graph.insert_edge(sym, dsg.NodeSymbol("R", 0))
+    graph.insert_edge(dsg.NodeSymbol("R", 0), dsg.NodeSymbol("B", 0))
+
+    # 5. the robot pose, as Hydra's agent layer
     robot = rs_env.robots[0]
-    base_body = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, robot.robot_model.root_body)
-    rpart = body_part(model, data, "robot:robot0", base_body, _collision_geoms(model, _subtree_body_ids(model, base_body)))
-    if rpart is not None:
-        nodes["robot:robot0"] = _node("robot:robot0", "robot", "mobile_manipulator", "the robot", [rpart], "robot_collision_geoms")
+    sid = rs_env.sim.model.site_name2id(robot.robot_model.base.correct_naming("center"))
+    agent = dsg.AgentNodeAttributes()
+    agent.position = np.array(rs_env.sim.data.site_xpos[sid])
+    quat = np.zeros(4)
+    mujoco.mju_mat2Quat(quat, np.array(rs_env.sim.data.site_xmat[sid]).reshape(9))
+    agent.world_R_body = dsg.Quaternion(*quat)  # (w, x, y, z)
+    graph.add_node(AGENT_LAYER, dsg.NodeSymbol("a", 0), agent, ROBOT_PARTITION)
 
-    try:
-        lang = str(rs_env.get_ep_meta().get("lang", ""))
-    except Exception:
-        lang = ""
-    meta = {
-        "layout_id": int(getattr(rs_env, "layout_id", -1)) if not isinstance(getattr(rs_env, "layout_id", None), dict) else "custom",
-        "style_id": int(getattr(rs_env, "style_id", -1)) if not isinstance(getattr(rs_env, "style_id", None), dict) else "custom",
-        "n_fixtures": sum(1 for n in nodes.values() if n.kind == "fixture"),
-        "n_objects": sum(1 for n in nodes.values() if n.kind == "object"),
-        "n_fragments": sum(len(n.parts) for n in nodes.values() if n.kind != "robot"),
-    }
-    return OracleSceneGraph(nodes=nodes, task_language=lang, edges=edges, meta=meta)
+    graph.set_labelspace(dsg.Labelspace(labels.names), dsg.DsgLayers.OBJECTS)
 
-
-def perturb(graph: OracleSceneGraph, rng: np.random.Generator, *, eps_pos_m: float = 0.0, eps_yaw_rad: float = 0.0, eps_extent_m: float = 0.0) -> OracleSceneGraph:
-    """Hook for the uncertainty study: a noisy copy of the graph (uniform bounded noise per part); the oracle stays for scoring."""
-
-    def rot_z(q, dyaw):
-        x, y, z, w = q
-        c, s = np.cos(dyaw / 2), np.sin(dyaw / 2)
-        return (float(w * 0 + x * c + y * s), float(y * c - x * s), float(z * c + w * s), float(w * c - z * s))
-
-    nodes = {}
-    for nid, n in graph.nodes.items():
-        if n.kind == "robot":
-            nodes[nid] = n
-            continue
-        parts = []
-        for p in n.parts:
-            dc = rng.uniform(-eps_pos_m, eps_pos_m, 3) if eps_pos_m else np.zeros(3)
-            de = rng.uniform(-eps_extent_m, eps_extent_m, 3) if eps_extent_m else np.zeros(3)
-            dy = float(rng.uniform(-eps_yaw_rad, eps_yaw_rad)) if eps_yaw_rad else 0.0
-            parts.append(Part(p.part_id, p.body, tuple(float(v) for v in np.asarray(p.center) + dc), rot_z(p.orientation_xyzw, dy) if dy else p.orientation_xyzw, tuple(float(v) for v in np.maximum(np.asarray(p.half_extents) + de, MINIMUM_HALF_EXTENT_M))))
-        nodes[nid] = _node(nid, n.kind, n.category, n.name, parts, n.source + "+noise")
-    meta = dict(graph.meta, noise={"eps_pos_m": eps_pos_m, "eps_yaw_rad": eps_yaw_rad, "eps_extent_m": eps_extent_m}, oracle_snapshot_id=graph.snapshot_id)
-    return OracleSceneGraph(nodes=nodes, task_language=graph.task_language, edges=list(graph.edges), meta=meta)
+    # ground-truth side: what RoboCasa placed each object on, and the layout ids
+    for name in rs_env.objects:
+        fixture = (cfg_by_name.get(name, {}).get("placement", {}) or {}).get("fixture")
+        fixture = getattr(fixture, "name", fixture)
+        if f"object:{name}" in lookup.node_of and f"fixture:{fixture}" in lookup.node_of:
+            lookup.support[lookup.node_of[f"object:{name}"]] = lookup.node_of[f"fixture:{fixture}"]
+    for key in ("layout_id", "style_id"):
+        value = getattr(rs_env, key, None)
+        lookup.meta[key] = int(value) if isinstance(value, (int, np.integer)) else "custom"
+    return SceneGraph(graph, labels), lookup
 
 
-def fixture_node_id(rs_env, ref) -> str | None:
-    """Resolve a RoboCasa fixture object, fixture-ref key or fixture name to a node id."""
-    fx = rs_env.fixture_refs.get(ref) if isinstance(ref, str) and hasattr(rs_env, "fixture_refs") and ref in rs_env.fixture_refs else ref
-    fx = fx[0] if isinstance(fx, tuple) else fx
-    name = getattr(fx, "name", fx)
-    return f"fixture:{name}" if isinstance(name, str) else None
+def perturb(graph: SceneGraph, rng: np.random.Generator, *, eps_pos_m: float = 0.0, eps_extent_m: float = 0.0, eps_yaw_rad: float = 0.0) -> SceneGraph:
+    """Hook for the uncertainty study: a copy of the graph with bounded uniform noise on every object box.
+    Boxes are axis-aligned (as in Hydra's AABB output), so yaw noise is not representable."""
+    if eps_yaw_rad:
+        raise ValueError("eps_yaw_rad: the scene graph's boxes are axis-aligned")
+    noisy = graph.dsg.clone()
+    for node in noisy.get_layer(dsg.DsgLayers.OBJECTS).nodes:
+        bb = node.attributes.bounding_box
+        center = np.asarray(bb.world_P_center) + rng.uniform(-eps_pos_m, eps_pos_m, 3)
+        dims = np.maximum(np.asarray(bb.dimensions) + 2 * rng.uniform(-eps_extent_m, eps_extent_m, 3), 2 * MINIMUM_HALF_EXTENT_M)
+        node.attributes.bounding_box = dsg.BoundingBox(dims.astype(np.float32), center.astype(np.float32))
+        node.attributes.position = center
+    return SceneGraph(noisy, graph.labels)

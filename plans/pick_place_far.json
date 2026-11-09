@@ -1,0 +1,12 @@
+{
+  "mission": "pick_place_far",
+  "task": "PickPlaceSinkToCounterFar",
+  "description": "Drive from the far side of the kitchen to the sink, then pick the object from the sink and place it on the container on the counter (VLA). Reference plan: NAVIGATION to the sink, then one VLA pick-and-place segment.",
+  "env_kwargs": {},
+  "horizon": 1200,
+  "roles": {"sink": {"fixture_ref": "sink"}},
+  "segments": [
+    {"kind": "NAVIGATION", "skill": "navigate", "goal": {"role": "sink", "standoff": true}, "done": {"check": "base_near_goal", "radius": 0.2}},
+    {"kind": "VLA", "skill": "pick_and_place", "targets": ["sink"], "exempt": [{"role": "sink"}], "done": {"check": "task_success"}}
+  ]
+}

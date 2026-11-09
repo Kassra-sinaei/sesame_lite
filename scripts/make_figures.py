@@ -44,11 +44,10 @@ def load(out_dir, task, seed, arm):
     return json.load(open(Path(out_dir) / f"{task}_s{seed}_{arm.replace('+', 'plus')}.json"))
 
 
-def footprint(part):
-    c, h = np.asarray(part["center"]), np.asarray(part["half_extents"])
-    x, y, z, w = part["orientation_xyzw"]
-    R = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w)], [2 * (x * y + z * w), 1 - 2 * (x * x + z * z)]])
-    return np.array([[-1, -1], [1, -1], [1, 1], [-1, 1]]) * h[:2] @ R.T + c[:2]
+def footprint(node):
+    """Corners of a node's axis-aligned box seen from above."""
+    c, h = np.asarray(node["center"]), np.asarray(node["half_extents"])
+    return np.array([[-1, -1], [1, -1], [1, 1], [-1, 1]]) * h[:2] + c[:2]
 
 
 def corridor_polygon(path, r):
@@ -60,24 +59,20 @@ def corridor_polygon(path, r):
 
 def part_roles(ep, seg_index=0):
     seg, bundle = ep["segments"][seg_index], ep["bundles"][seg_index]
-    rows, labels, cands, exempt = set(ep.get("row_ids", [])), bundle["labels"], set(bundle["candidate_ids"]), seg["exempt_parts"]
+    rows, labels, cands, exempt = set(ep.get("row_ids", [])), bundle["labels"], set(bundle["candidate_ids"]), set(seg["exempt_ids"])
     out = {}
     for node in ep["graph"]["nodes"]:
-        if node["kind"] == "robot":
-            continue
         nid = node["node_id"]
-        for p in node["parts"]:
-            if p["part_id"] in rows:
-                r = "row"
-            elif nid in exempt and (not exempt[nid] or any(s in p["body"] for s in exempt[nid])):
-                r = "exempt"
-            elif labels.get(nid) in ("passable", "irrelevant"):
-                r = labels[nid]
-            elif nid in cands:
-                r = "row"
-            else:
-                r = "outside"
-            out[p["part_id"]] = r
+        if nid in rows:
+            out[nid] = "row"
+        elif nid in exempt:
+            out[nid] = "exempt"
+        elif labels.get(nid) in ("passable", "irrelevant"):
+            out[nid] = labels[nid]
+        elif nid in cands:
+            out[nid] = "row"
+        else:
+            out[nid] = "outside"
     return out
 
 
@@ -96,13 +91,14 @@ def mission_extent(ep, pad=0.45):
 
 def draw_parts(ax, ep, roles, *, muted=False, z_max=None):
     """Footprints, drawn largest first so small objects stay visible on top of counters."""
-    parts = [(p, roles[p["part_id"]]) for n in ep["graph"]["nodes"] if n["kind"] != "robot" for p in n["parts"]]
+    fixture_ids = {nid for name, nid in ep["oracle_lookup"]["node_of"].items() if name.startswith("fixture:")}
+    parts = [(n, roles[n["node_id"]]) for n in ep["graph"]["nodes"]]
     parts.sort(key=lambda pr: -np.prod(pr[0]["half_extents"][:2]))
     for p, r in parts:
         if z_max is not None and p["center"][2] - p["half_extents"][2] > z_max:
             continue
         face = ROLE_COLOR[r]
-        if muted and not p["part_id"].startswith("object:"):  # fixtures as context, free objects keep their role colour
+        if muted and p["node_id"] in fixture_ids:  # fixtures as context, free objects keep their role colour
             face = "#D6D6D6"
         ax.add_patch(Polygon(footprint(p), closed=True, facecolor=face, edgecolor="#4D4D4D" if r != "outside" else "#BDBDBD", linewidth=0.35, alpha=0.9 if r != "outside" else 0.7, zorder=2))
 
@@ -110,7 +106,7 @@ def draw_parts(ax, ep, roles, *, muted=False, z_max=None):
 def annotate_injections(ax, ep):
     nodes = {n["node_id"]: n for n in ep["graph"]["nodes"]}
     for inj in ep.get("plan", {}).get("injections", []):
-        n = nodes.get(f"object:{inj['name']}")
+        n = nodes.get(ep["oracle_lookup"]["node_of"].get(f"object:{inj['name']}"))
         if n is None:
             continue
         c = np.asarray(n["center"][:2])
@@ -150,7 +146,7 @@ def query_map(ep, out_path):
                 Line2D([], [], marker="o", ls="", color="black", ms=4, label="start"), Line2D([], [], marker="*", ls="", color="#1F4E9A", ms=7, label="goal")]
     fig.legend(handles=handles, loc="outside lower center", ncol=2, frameon=False, handlelength=1.4, columnspacing=1.0)
     ax.text(0.02, 0.98, f"{res['n_nodes']} nodes $\\to$ {len(bundle['candidate_ids'])} in corridor $\\to$ {len(bundle['admitted_ids'])} constrained\n"
-            f"{res['n_fragments']} parts $\\to$ {len(ep['row_ids'])} constraint rows", transform=ax.transAxes, va="top", ha="left", fontsize=6.5,
+            f"{res['n_nodes']} nodes $\\to$ {len(ep['row_ids'])} constraint rows", transform=ax.transAxes, va="top", ha="left", fontsize=6.5,
             bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="#BBBBBB", lw=0.4), zorder=8)
     fig.savefig(out_path)
     plt.close(fig)
@@ -228,11 +224,11 @@ def transcript(ep, out_path):
         lab = bundle["labels"].get(cid, "obstacle")
         if cid in bundle["overrides"]:
             effect = "override: kept as obstacle"
-        elif cid in seg["exempt_parts"]:
-            effect = "task contact: " + (", ".join(seg["exempt_parts"][cid]) if seg["exempt_parts"][cid] else "whole node") + " exempt"
+        elif cid in seg["exempt_ids"]:
+            effect = "task contact: exempt"
         else:
             effect = "rows kept" if lab == "obstacle" else "rows removed"
-        rows.append([cid.split(":", 1)[1], f"{n['category'].replace('_', ' ')} ({x:.2f} x {y:.2f} x {z:.2f} m)", lab, effect])
+        rows.append([cid, f"{n['category'].replace('_', ' ')} ({x:.2f} x {y:.2f} x {z:.2f} m)", lab, effect])
         colors.append({"passable": "#DDF1E4", "irrelevant": "#ECECEC"}.get(lab, "white"))
     order = sorted(range(len(rows)), key=lambda i: (rows[i][2] == "obstacle", rows[i][0]))
     rows, colors = [rows[i] for i in order], [colors[i] for i in order]

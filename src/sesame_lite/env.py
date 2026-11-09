@@ -34,6 +34,7 @@ from sesame_lite.agents.pruning_classifier import (
     CategoryPriorClassifier,
     ClaudeCodeClassifier,
     ConservativeFallbackClassifier,
+    QwenClassifier,
     StickyPassabilityClassifier,
 )
 from sesame_lite.filter import CONTROL_DT_S, MODE_INDEX, FilterPolicy, PerRowFilter, RobotState, base_velocity_to_command
@@ -41,6 +42,7 @@ from sesame_lite.geometry.swept_volume import BETA_DEVIATION_BUDGET_M
 from sesame_lite.planner import NAVIGATION, VLA, build_bundle, default_plan, resolve_plan
 from sesame_lite.determinism import SAMPLER_SEED, begin_episode, seed_fallback_generators
 from sesame_lite.scene_graph import _raw_data, _raw_model, _subtree_body_ids, capture_scene_graph, perturb
+import sesame_lite.render_fix  # noqa: F401,E402  (stops freed render contexts from corrupting camera frames)
 
 # The checkpoint's own camera assignment (policy_preprocessor.json); lerobot's docs swap camera2/camera3.
 RENAME_MAP = {
@@ -54,6 +56,7 @@ CLASSIFIERS = {
     "none": lambda: None,
     "prior": CategoryPriorClassifier,
     "claude": lambda: StickyPassabilityClassifier(ConservativeFallbackClassifier(ClaudeCodeClassifier())),
+    "qwen": lambda: StickyPassabilityClassifier(ConservativeFallbackClassifier(QwenClassifier())),
 }
 STALL_HOLD_TICKS = 50
 STALL_PROGRESS_TICKS = 100
@@ -138,6 +141,7 @@ class SesameRoboCasaEnv(RoboCasaEnv):
     def step(self, action: np.ndarray):
         self._ensure_env()
         raw_obs, reward, done, truncated, info = self._env.step(convert_action(np.asarray(action, dtype=np.float32)))
+        self.last_raw_obs = raw_obs  # kept so the video shows exactly the frames the policy received
         is_success = bool(info.get("success", False))
         info.update({"task": self.task, "done": done, "is_success": is_success})
         return self._format_raw_obs(raw_obs), reward, bool(done or is_success), truncated, info
@@ -213,9 +217,7 @@ class SafetyFilterEnv(gym.Wrapper):
     def reset(self, seed=None, *, plan: dict | None = None, **kwargs):
         obs, info = self.env.reset(seed=seed)
         rs, model = self.rs, _raw_model(self.rs.sim)
-        self.oracle_graph = capture_scene_graph(rs)
-        self.graph = perturb(self.oracle_graph, np.random.default_rng(self.noise_seed), **self.graph_noise) if self.graph_noise else self.oracle_graph
-        self.oracle_fragments, self.fragments = self.oracle_graph.fragments(), self.graph.fragments()
+        self._capture()
         bp, R, _ = self.robot_pose()
         self.init_yaw = float(np.arctan2(R[1, 0], R[0, 0]))  # the base controller's reference orientation
         pg, Rg, size = self._base_box()
@@ -230,7 +232,7 @@ class SafetyFilterEnv(gym.Wrapper):
         # a goal must leave room for the filter's standoff: margin + the ISSf equilibrium d/alpha + 1 cm
         standoff = self.policy.policy_margin_m + self.policy.disturbance_margin_mps / self.policy.barrier_gain + 0.01
         self.plan_kwargs = dict(base_xy=bp[:2], rect_xy=self.rect, z_band=self.z_band, clearance_m=standoff, inflation_m=float(hi[1] - lo[1]) / 2 + 0.10)
-        self.segments = resolve_plan(self.plan, rs, self.graph, **self.plan_kwargs)
+        self.segments = resolve_plan(self.plan, rs, self.graph, self.lookup, language=self.env.task_description, **self.plan_kwargs)
         self.gt_passable = set()
         if self.plan.get("injections") and self.segments[0].kind == NAVIGATION:
             # floor objects are dropped onto the planned path, then the graph is captured again (the path planner
@@ -238,20 +240,14 @@ class SafetyFilterEnv(gym.Wrapper):
             from sesame_lite.tasks import place_on_path
 
             place_on_path(rs, self.segments[0].path_polyline_xy)
-            self.oracle_graph = capture_scene_graph(rs)
-            self.graph = perturb(self.oracle_graph, np.random.default_rng(self.noise_seed), **self.graph_noise) if self.graph_noise else self.oracle_graph
-            self.oracle_fragments, self.fragments = self.oracle_graph.fragments(), self.graph.fragments()
-            self.gt_passable = {f"object:{inj['name']}" for inj in self.plan["injections"] if inj.get("ground_truth") == "passable"}
-        # contact bookkeeping (body -> node)
-        self.body_to_node = {}
-        for name, fx in rs.fixtures.items():
-            if f"fixture:{name}" in self.oracle_graph.nodes:
-                for b in _subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, fx.root_body)):
-                    self.body_to_node[b] = f"fixture:{name}"
-        for name in rs.objects:
-            if f"object:{name}" in self.oracle_graph.nodes:
-                for b in _subtree_body_ids(model, rs.obj_body_id[name]):
-                    self.body_to_node[b] = f"object:{name}"
+            first = self.segments
+            self._capture()  # objects are renumbered by position: resolve the roles again on the new graph
+            self.segments = resolve_plan(self.plan, rs, self.graph, self.lookup, language=self.env.task_description, **self.plan_kwargs)
+            for old, new in zip(first, self.segments):  # but keep the path the mats were dropped on
+                new.path_polyline_xy, new.goal_yaw, new.goal_offset_m, new.center_xy = old.path_polyline_xy, old.goal_yaw, old.goal_offset_m, old.center_xy
+            self.gt_passable = {self.lookup.node(f"object:{inj['name']}") for inj in self.plan["injections"] if inj.get("ground_truth") == "passable"} - {None}
+        # contact bookkeeping (MuJoCo body -> scene-graph node), from the oracle lookup
+        self.body_to_node = {b: nid for nid, bodies in self.lookup.bodies.items() for b in bodies}
         self.robot_bodies = _subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, rs.robots[0].robot_model.root_body))
         self.receipts, self.ground_truth, self.bundles, self.min_h_by_node = [], [], [], {}
         self.tick, self.epoch, self.hold_streak, self._prev_pose = 0, 0, 0, None
@@ -260,6 +256,12 @@ class SafetyFilterEnv(gym.Wrapper):
         self.start_h = self._true_h(self.robot_state())
         self.start_violation = bool(self.start_h is not None and self.start_h < -self.policy.policy_margin_m)
         return obs, info
+
+    def _capture(self) -> None:
+        """Oracle scene graph (Hydra format) of the current kitchen, its noisy copy for the filter, and the lookup."""
+        self.oracle_graph, self.lookup = capture_scene_graph(self.rs)
+        self.graph = perturb(self.oracle_graph, np.random.default_rng(self.noise_seed), **self.graph_noise) if self.graph_noise else self.oracle_graph
+        self.oracle_fragments, self.fragments = self.oracle_graph.fragments(), self.graph.fragments()
 
     def begin_segment(self, index: int) -> None:
         """Prune for one segment (an epoch) and fix the row set of every arm."""
@@ -271,15 +273,14 @@ class SafetyFilterEnv(gym.Wrapper):
         self.bundles.append(self.bundle)
         all_nodes = [n.node_id for n in self.graph.obstacle_nodes()]
         self.row_ids = {
-            "A": self.graph.fragment_ids_of(self.bundle.admitted_ids, exempt_parts=seg.exempt_parts),
+            "A": self.graph.fragment_ids_of(self.bundle.admitted_ids, exempt=seg.exempt_ids),
             "B": self.graph.fragment_ids_of(all_nodes),
-            "B+": self.graph.fragment_ids_of(all_nodes, exempt_parts=seg.exempt_parts),
-            "C": self.graph.fragment_ids_of(self.bundle.admitted_ids, exempt_parts=seg.exempt_parts),
+            "B+": self.graph.fragment_ids_of(all_nodes, exempt=seg.exempt_ids),
+            "C": self.graph.fragment_ids_of(self.bundle.admitted_ids, exempt=seg.exempt_ids),
         }[self.arm]
-        # ground truth: every non-exempt part of the oracle graph (and nothing drivable by construction), identical for every arm
-        gt_exempt = dict(seg.exempt_parts, **{nid: () for nid in self.gt_passable})
-        self.eval_ids = self.oracle_graph.fragment_ids_of([n.node_id for n in self.oracle_graph.obstacle_nodes()], exempt_parts=gt_exempt)
-        self.exempt_nodes = set(seg.exempt_parts) | set(self.gt_passable)
+        # ground truth: every non-exempt node of the oracle graph (and nothing drivable by construction), identical for every arm
+        self.exempt_nodes = set(seg.exempt_ids) | set(self.gt_passable)
+        self.eval_ids = self.oracle_graph.fragment_ids_of([n.node_id for n in self.oracle_graph.obstacle_nodes()], exempt=self.exempt_nodes)
         self.epoch += 1
         self.segment_start_tick = self.tick
 
@@ -415,7 +416,7 @@ class SafetyFilterEnv(gym.Wrapper):
             "classifier_fallback": any(bool(b.classification and b.classification.fallback_used) for b in self.bundles),
             "goal_offset_m": [s.goal_offset_m for s in self.segments],
             "exempt": sorted(self.exempt_nodes),
-            "layout": self.graph.meta,
+            "layout": self.lookup.meta,
             "snapshot_id": self.oracle_graph.snapshot_id,
             "unseeded_rng_calls": SAMPLER_SEED[1],
         }
@@ -432,6 +433,7 @@ class SafetyFilterEnv(gym.Wrapper):
                     "segments": [s.as_dict() for s in self.segments],
                     "bundles": [b.as_dict() for b in self.bundles],
                     "graph": self.graph.as_dict(),
+                    "oracle_lookup": self.lookup.as_dict(),  # evaluation side only
                     "min_h_by_node": self.min_h_by_node,
                     "receipts": self.receipts,
                     "ground_truth": self.ground_truth,
@@ -439,6 +441,7 @@ class SafetyFilterEnv(gym.Wrapper):
                 f,
                 default=_json_default,
             )
+        self.graph.save(path.with_suffix(".dsg.json"))  # the scene graph in Hydra's file format
 
 
 # ---------------------------------------------------------------------- nominal policies

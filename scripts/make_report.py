@@ -22,7 +22,7 @@ m = 0.005
 
 lines = [f"# {args.task}, seed {args.seed}: baseline vs SESAME-3D", ""]
 r0 = next(iter(eps.values()))["result"]
-lines += [f"Task sentence: *{r0['task_description']}*. Layout {r0['layout'].get('layout_id')} / style {r0['layout'].get('style_id')}, {r0['n_nodes']} 3DSG nodes, {r0['n_fragments']} parts. Scene snapshot `{r0['snapshot_id']}`" + (" (identical across arms)." if len({e['result']['snapshot_id'] for e in eps.values()}) == 1 else " **(MISMATCH across arms)**."), ""]
+lines += [f"Task sentence: *{r0['task_description']}*. Layout {r0['layout'].get('layout_id')} / style {r0['layout'].get('style_id')}, {r0['n_nodes']} 3DSG object nodes. Scene snapshot `{r0['snapshot_id']}`" + (" (identical across arms)." if len({e['result']['snapshot_id'] for e in eps.values()}) == 1 else " **(MISMATCH across arms)**."), ""]
 
 # per-arm table
 cols = ["outcome", "success (plan goal)", "RoboCasa success", "steps", "contact ticks", "min true h [cm]", "worst penetration [cm]", "severity [m s]", "rows / tick", "tick ms p50 / p99", "filtered ticks", "holds / infeasible", "classifier [s]", "start h [cm]"]
@@ -55,18 +55,18 @@ if "C" in eps:
     e = eps["C"]
     bundle, graph = e["bundles"][0], {n["node_id"]: n for n in e["graph"]["nodes"]}
     seg = e["segments"][0]
-    n_all = sum(len(n["parts"]) for n in e["graph"]["nodes"] if n["kind"] != "robot")
-    n_bplus = n_all - sum(len([p for p in graph[nid]["parts"] if not pats or any(s in p["body"] for s in pats)]) for nid, pats in seg["exempt_parts"].items() if nid in graph)
-    lines += ["## Semantic prunability", "", f"Stage 1 (corridor / disc): {r0['n_nodes']} nodes -> {len(bundle['candidate_ids'])} candidates. Stage 2 labels -> {len(bundle['admitted_ids'])} admitted nodes. Rows: naive {n_all} parts -> task-exempt {n_bplus} -> SESAME {len(e['row_ids'])}.", "",
+    n_all = len(e["graph"]["nodes"])
+    n_bplus = n_all - len([nid for nid in seg["exempt_ids"] if nid in graph])
+    lines += ["## Semantic prunability", "", f"Stage 1 (corridor / disc): {r0['n_nodes']} nodes -> {len(bundle['candidate_ids'])} candidates. Stage 2 labels -> {len(bundle['admitted_ids'])} admitted nodes. Rows: naive {n_all} nodes -> task-exempt {n_bplus} -> SESAME {len(e['row_ids'])}.", "",
               "| candidate | name sent to the classifier | label | effect |", "|---|---|---|---|"]
     for cid in bundle["candidate_ids"]:
         n = graph[cid]
         x, y, z = (2 * h for h in n["half_extents"])
         lab = bundle["labels"].get(cid, "obstacle")
-        effect = "override -> obstacle" if cid in bundle["overrides"] else ("task contact: parts " + ", ".join(seg["exempt_parts"][cid]) if cid in seg["exempt_parts"] and seg["exempt_parts"][cid] else ("task contact: whole node exempt" if cid in seg["exempt_parts"] else ("" if lab == "obstacle" else "rows removed")))
-        lines.append(f"| {cid.split(':', 1)[1]} | {n['category']} (approx {x:.2f} x {y:.2f} x {z:.2f} m box) | {lab} | {effect} |")
+        effect = "override -> obstacle" if cid in bundle["overrides"] else ("task contact: exempt" if cid in seg["exempt_ids"] else ("" if lab == "obstacle" else "rows removed"))
+        lines.append(f"| {cid} | {n['category']} (approx {x:.2f} x {y:.2f} x {z:.2f} m box) | {lab} | {effect} |")
     dropped = [cid for cid in bundle["candidate_ids"] if cid not in bundle["admitted_ids"]]
-    lines += ["", f"Nodes removed by semantics: {', '.join(c.split(':', 1)[1] for c in dropped) or 'none'}. Nodes outside the corridor (never rows): {r0['n_nodes'] - len(bundle['candidate_ids'])}.", ""]
+    lines += ["", f"Nodes removed by semantics: {', '.join(dropped) or 'none'}. Nodes outside the corridor (never rows): {r0['n_nodes'] - len(bundle['candidate_ids'])}.", ""]
 
 lines += ["## Figures", "", f"![query](fig_{args.task}_s{args.seed}_query.pdf) ![traces](fig_{args.task}_s{args.seed}_traces.pdf) ![transcript](fig_{args.task}_s{args.seed}_transcript.pdf)", "", f"Videos: `{args.task}_s{args.seed}_<arm>.mp4`, side-by-side `{args.task}_s{args.seed}_side_by_side.mp4`."]
 (out / "REPORT.md").write_text("\n".join(lines))

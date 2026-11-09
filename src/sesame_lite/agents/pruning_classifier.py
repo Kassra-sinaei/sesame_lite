@@ -397,3 +397,59 @@ class StickyPassabilityClassifier:
             labels = {}
         labels.update(remembered)
         return replace(result, labels=labels, classifier_version=f"{result.classifier_version}+sticky")
+
+
+
+@dataclass
+class QwenClassifier:
+    """The same single structured call, answered by Qwen3-14B on the local vLLM server (scripts/llm/serve_qwen.sh).
+
+    Same prompt, schema, payload and exact-cover decode as the Claude path. Thinking off, with the Qwen3 model
+    card's sampling for that mode (temperature 0.7, top_p 0.8, top_k 20); seed fixed for repeatability.
+    """
+
+    base_url: str = os.environ.get("SESAME_QWEN_URL", "http://127.0.0.1:8001/v1")
+    model: str = "qwen3-14b"
+    timeout_s: float = 120.0
+    classifier_version: str = f"{PRUNING_CLASSIFIER_VERSION}+qwen3-14b"
+
+    def classify(
+        self,
+        *,
+        candidates: Sequence[PruningCandidate],
+        task_goal: str,
+        parent_graph_snapshot_id: str,
+    ) -> PruningClassification:
+        # One plain HTTP request with the standard library (no client package needed in the episode process).
+        import urllib.error
+        import urllib.request
+
+        goal = _validated_goal(task_goal)
+        items = _validated_candidates(candidates)
+        user_message = request_payload(items, goal)
+        body = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": CLASSIFIER_SYSTEM_PROMPT}, {"role": "user", "content": user_message}],
+            "response_format": {"type": "json_schema", "json_schema": {"name": "labels", "schema": classifier_output_schema(), "strict": True}},
+            "temperature": 0.7, "top_p": 0.8, "top_k": 20, "seed": 0, "max_tokens": 2048,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        request = urllib.request.Request(f"{self.base_url}/chat/completions", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        t0 = time.perf_counter()
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
+                reply = json.loads(response.read())
+            structured = json.loads(reply["choices"][0]["message"]["content"] or "")
+        except (OSError, KeyError, json.JSONDecodeError) as exc:  # URLError and timeouts are OSErrors
+            raise ClassifierDecodeError(f"qwen: {exc}") from exc
+        latency = time.perf_counter() - t0
+        labels = decode_classifier_labels(structured, [c.stable_id for c in items])
+        return PruningClassification(
+            labels=labels,
+            parent_graph_snapshot_id=parent_graph_snapshot_id,
+            classifier_version=self.classifier_version,
+            model_identity="Qwen/Qwen3-14B-AWQ",
+            request_digest=hashlib.sha256(user_message.encode()).hexdigest(),
+            response_digest=hashlib.sha256(json.dumps(structured, sort_keys=True).encode()).hexdigest(),
+            latency_s=latency,
+        )

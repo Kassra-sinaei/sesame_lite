@@ -4,6 +4,9 @@
 placemats: 0.8 cm tall, the analog of the paper's doormat) and one object it must not (a flour bag).
 RoboCasa cannot sample objects on the floor, so they are spawned on a counter and moved onto the
 planned path after reset (``place_on_path``), before the 3DSG is captured.
+
+``PickPlaceSinkToCounterFar``: RoboCasa's PickPlaceSinkToCounter (same objects, same success check), but the robot
+starts in front of the fixture farthest from the sink, so a plan needs a navigation segment before the VLA.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ from __future__ import annotations
 import mujoco
 import numpy as np
 from robocasa.environments.kitchen.atomic.kitchen_navigate import NavigateKitchen
+from robocasa.environments.kitchen.atomic.kitchen_pick_place import PickPlaceSinkToCounter
 from robocasa.environments.kitchen.kitchen import FixtureType
 
 from sesame_lite.scene_graph import _raw_data, _raw_model
@@ -31,6 +35,19 @@ class NavigateKitchenMats(NavigateKitchen):
             dict(name=name, obj_groups=category, graspable=False, init_robot_here=False, placement=dict(fixture=counter, size=(0.6, 0.4), pos=(None, -1.0), offset=(0.0, 0.0)))
             for name, category, _ in FLOOR_OBJECTS
         ]
+
+
+START_FIXTURE_CLASSES = ("Stove", "Stovetop", "Oven", "Microwave", "Dishwasher", "CoffeeMachine", "Toaster", "ToasterOven",
+                         "FridgeFrenchDoor", "FridgeSideBySide", "FridgeBottomFreezer", "HingeCabinet", "SingleCabinet")
+
+
+class PickPlaceSinkToCounterFar(PickPlaceSinkToCounter):
+    def _setup_kitchen_references(self):
+        super()._setup_kitchen_references()  # registers the sink and the counter next to it
+        sink_xy = np.asarray(self.sink.pos[:2])
+        candidates = [fx for fx in self.fixtures.values() if type(fx).__name__ in START_FIXTURE_CLASSES]
+        # the robot starts in front of the fixture farthest from the sink (a fixed rule, no randomness)
+        self.init_robot_base_ref = max(candidates, key=lambda fx: float(np.linalg.norm(np.asarray(fx.pos[:2]) - sink_xy)))
 
 
 def place_on_path(rs_env, path_xy: np.ndarray) -> None:
@@ -59,4 +76,5 @@ def place_on_path(rs_env, path_xy: np.ndarray) -> None:
 
 
 def ground_truth_passable() -> set[str]:
+    """Oracle names of the floor objects the base may drive over (map to graph nodes with OracleLookup.node)."""
     return {f"object:{name}" for name, _, passable in FLOOR_OBJECTS if passable}
