@@ -31,11 +31,12 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--plan", required=True, help="the mission file in plans/ (task, kitchen and the hand-written reference plan)")
 ap.add_argument("--seed", type=int, default=0)
 ap.add_argument("--out", default="outputs/plans_llm")
+ap.add_argument("--graph-source", default="oracle", choices=("oracle", "hydra"), help="the graph the planner sees (hydra: the cached map of this scene)")
 args = ap.parse_args()
 
 mission = load_plan(args.plan)
 base = SesameRoboCasaEnv(mission["task"], env_kwargs=dict(mission.get("env_kwargs", {})), episode_length=mission.get("horizon"))
-env = SafetyFilterEnv(base, filter=False)  # no classifier call; reset builds the scene and its scene graph
+env = SafetyFilterEnv(base, filter=False, graph_source=args.graph_source)  # no classifier call; reset builds the scene and its scene graph
 env.reset(seed=args.seed, plan=mission)
 task_instruction = env.env.task_description
 
@@ -44,7 +45,7 @@ result = run_planner(env.graph, task_instruction)
 wall_s = time.time() - t0
 
 # the hand-written plan resolved on the same scene: kept for scoring only
-reference = {"roles": {name: resolve_role(spec, env.rs, env.lookup) for name, spec in mission["roles"].items()},
+reference = {"roles": {name: resolve_role(spec, env.rs, env.lookup) for name, spec in mission["roles"].items()},  # filter-side ids
              "segment_kinds": [s["kind"] for s in mission["segments"]],
              "exempt_ids": [list(s.exempt_ids) for s in env.segments]}
 
@@ -52,7 +53,7 @@ out_dir = Path(args.out)
 out_dir.mkdir(parents=True, exist_ok=True)
 stem = f"{mission['mission']}_s{args.seed}"
 plan_file = {key: mission[key] for key in ("task", "env_kwargs", "horizon", "injections") if key in mission}
-plan_file.update({"mission": mission["mission"], "seed": args.seed, "task_instruction": task_instruction,
+plan_file.update({"mission": mission["mission"], "seed": args.seed, "task_instruction": task_instruction, "graph_source": args.graph_source,
                   **(result["plan"] or {"roles": {}, "segments": []}),
                   "planner": {"accepted": result["plan"] is not None, "failure": result["failure"], "turns": result["turns"],
                               "wall_s": round(wall_s, 1), "committed": result["committed"], "settings": result["settings"]},

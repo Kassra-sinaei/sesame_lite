@@ -18,6 +18,9 @@ Two things come out of a capture:
 - ``SceneGraph``: a small reader over the Hydra graph. The planner, the classifier and the safety filter use only this.
 - ``OracleLookup``: which node is which RoboCasa fixture/object and which MuJoCo bodies belong to it. Only the
   evaluation side uses it (contact checks, ground truth, the hand-written reference plans); no model ever sees it.
+
+``HydraSceneGraph`` reads the graph Hydra itself built from the mapping pass (``sesame_lite.mapping``): oriented boxes
+with per-face standard deviations. ``IdBridge`` is the one crossing point between its node ids and the oracle's.
 """
 
 from __future__ import annotations
@@ -89,6 +92,17 @@ class LabelSpace:
 
 
 @dataclass(frozen=True)
+class Face:
+    """One face of a node's box as a half-space a . x <= offset (spec 4.6)."""
+
+    normal: tuple  # a_k, unit, world: +-R[:,0], +-R[:,1], +-R[:,2]
+    offset: float  # b_hat_k = max over the node's mesh vertices of a_k . p
+    sigma: float  # std of the offset
+    support_vertex: tuple  # the vertex that attains the max
+    observed: bool  # evaluation only (true supporting point near an observed voxel); the filter never reads it
+
+
+@dataclass(frozen=True)
 class SceneObject:
     """One OBJECTS-layer node as the rest of the code sees it."""
 
@@ -98,14 +112,20 @@ class SceneObject:
     center: tuple[float, float, float]
     half_extents: tuple[float, float, float]
     kind: str = "object"  # Hydra has no fixture/object split; kept for the classifier's request format
+    rotation: tuple | None = None  # world_R_box (3x3, row-major tuples); None = axis-aligned (the oracle)
+    faces: tuple[Face, ...] = ()  # Hydra nodes: the six faces with their std
+    label_confidence: float | None = None  # hook for a label-confidence gate (not used yet)
 
     @property
     def extent(self) -> tuple[float, float, float]:
         return tuple(2.0 * h for h in self.half_extents)
 
     def aabb(self) -> tuple[np.ndarray, np.ndarray]:
-        c, h = np.asarray(self.center), np.asarray(self.half_extents)
-        return c - h, c + h
+        if self.rotation is None:
+            c, h = np.asarray(self.center), np.asarray(self.half_extents)
+            return c - h, c + h
+        lo, hi = self.fragment().aabb(3)
+        return np.array(lo), np.array(hi)
 
     def classifier_name(self) -> str:
         x, y, z = self.extent
@@ -113,31 +133,50 @@ class SceneObject:
 
     def fragment(self) -> OrientedBoxFragment:
         """The node's box as one barrier fragment (fragment id = node id)."""
-        return OrientedBoxFragment(parent_stable_id=self.node_id, fragment_id=self.node_id, center=self.center, orientation_xyzw=(0.0, 0.0, 0.0, 1.0), half_extents=self.half_extents)
+        return OrientedBoxFragment(parent_stable_id=self.node_id, fragment_id=self.node_id, center=self.center, orientation_xyzw=self.orientation_xyzw, half_extents=self.half_extents)
+
+    @property
+    def orientation_xyzw(self) -> tuple[float, float, float, float]:
+        if self.rotation is None:
+            return (0.0, 0.0, 0.0, 1.0)
+        q = np.zeros(4)
+        mujoco.mju_mat2Quat(q, np.asarray(self.rotation, dtype=np.float64).reshape(9))  # (w, x, y, z)
+        return (float(q[1]), float(q[2]), float(q[3]), float(q[0]))
 
     def as_dict(self) -> dict:
-        return {"node_id": self.node_id, "label": self.label, "category": self.category,
-                "center": [round(v, ROUND) for v in self.center], "half_extents": [round(v, ROUND) for v in self.half_extents]}
+        d = {"node_id": self.node_id, "label": self.label, "category": self.category,
+             "center": [round(v, ROUND) for v in self.center], "half_extents": [round(v, ROUND) for v in self.half_extents]}
+        if self.rotation is not None:
+            d["rotation"] = [[round(v, 6) for v in row] for row in self.rotation]
+        return d
 
 
 class SceneGraph:
     """Reader over a Hydra DynamicSceneGraph: objects, places, rooms and the robot pose."""
 
-    def __init__(self, graph: dsg.DynamicSceneGraph, labels: LabelSpace):
+    def __init__(self, graph: dsg.DynamicSceneGraph, labels: LabelSpace, *, robot_pose: tuple[np.ndarray, float] | None = None):
         self.dsg, self.labels = graph, labels
         self.nodes: dict[str, SceneObject] = {}
         for node in graph.get_layer(dsg.DsgLayers.OBJECTS).nodes:
-            a = node.attributes
-            bb = a.bounding_box
-            self.nodes[str(node.id)] = SceneObject(
-                node_id=str(node.id), label=int(a.semantic_label), category=labels.names.get(int(a.semantic_label), "unknown"),
-                center=tuple(float(v) for v in bb.world_P_center), half_extents=tuple(float(max(v / 2, MINIMUM_HALF_EXTENT_M)) for v in bb.dimensions))
+            obj = self._read_object(node)
+            if obj is not None:
+                self.nodes[obj.node_id] = obj
         self.places = {str(n.id): (np.asarray(n.attributes.position, dtype=float), float(n.attributes.distance)) for n in graph.get_layer(dsg.DsgLayers.PLACES).nodes}
         self.rooms = [str(n.id) for n in graph.get_layer(dsg.DsgLayers.ROOMS).nodes]
-        agent = next(iter(graph.get_layer(AGENT_LAYER, ROBOT_PARTITION).nodes))
-        q = agent.attributes.world_R_body
-        self.robot_xy = np.asarray(agent.attributes.position, dtype=float)[:2]
-        self.robot_yaw = float(np.arctan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)))
+        if robot_pose is not None:  # from the simulator at capture time
+            self.robot_xy, self.robot_yaw = np.asarray(robot_pose[0], dtype=float)[:2], float(robot_pose[1])
+        else:  # the oracle graph stores it in the agent layer
+            agent = next(iter(graph.get_layer(AGENT_LAYER, ROBOT_PARTITION).nodes))
+            q = agent.attributes.world_R_body
+            self.robot_xy = np.asarray(agent.attributes.position, dtype=float)[:2]
+            self.robot_yaw = float(np.arctan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)))
+
+    def _read_object(self, node) -> SceneObject | None:
+        a = node.attributes
+        bb = a.bounding_box
+        return SceneObject(
+            node_id=str(node.id), label=int(a.semantic_label), category=self.labels.names.get(int(a.semantic_label), "unknown"),
+            center=tuple(float(v) for v in bb.world_P_center), half_extents=tuple(float(max(v / 2, MINIMUM_HALF_EXTENT_M)) for v in bb.dimensions))
 
     @property
     def snapshot_id(self) -> str:
@@ -180,6 +219,116 @@ def _parse_symbol(text: str) -> tuple[str, int]:
     if m is None:
         raise KeyError(f"not a node id: {text!r}")
     return m.group(1), int(m.group(2))
+
+
+class HydraSceneGraph(SceneGraph):
+    """Reader over the graph Hydra built in the mapping pass (outputs/maps/<mission>_s<seed>_<n>/).
+
+    Labels are instance labels (the panoptic stand-in); ``label`` and ``category`` are the instance's category,
+    through the instance -> category table of the map, so no instance or RoboCasa name reaches a model. Boxes are
+    Hydra's oriented boxes; each node carries its six faces with their std (faces.json). Places and rooms are
+    Hydra's own (there may be no room, and an object may have no parent place). The robot pose comes from the
+    simulator at capture time: Hydra's agent layer holds the mapping camera's poses.
+    """
+
+    def __init__(self, map_dir: str | Path, labels: LabelSpace, *, robot_pose: tuple[np.ndarray, float]):
+        map_dir = Path(map_dir)
+        self.map_dir = map_dir
+        self.meta = json.loads((map_dir / "meta.json").read_text())
+        self.category_of_label = {int(k): int(v) for k, v in self.meta["category_of_label"].items()}
+        self.voxel_size_m = float(self.meta["params"]["voxel_size_m"])
+        self._faces = {n["node_id"]: n for n in json.loads((map_dir / "faces.json").read_text())["nodes"]}
+        super().__init__(dsg.DynamicSceneGraph.load(str(map_dir / "dsg.json")), labels, robot_pose=robot_pose)
+
+    def _read_object(self, node) -> SceneObject | None:
+        node_id = str(node.id)
+        record = self._faces.get(node_id)
+        if record is None:  # a node without mesh vertices has no faces: nothing to protect or show
+            return None
+        bb = node.attributes.bounding_box
+        category = self.category_of_label.get(int(node.attributes.semantic_label), 0)
+        faces = tuple(Face(normal=tuple(f["normal"]), offset=float(f["offset"]), sigma=float(f["sigma"]) if f["sigma"] is not None else float("nan"),
+                           support_vertex=tuple(f["support_vertex"]), observed=bool(f["observed"])) for f in record["faces"])
+        R = np.asarray(bb.world_R_center, dtype=float)
+        return SceneObject(
+            node_id=node_id, label=category, category=self.labels.names.get(category, "unknown"),
+            center=tuple(float(v) for v in bb.world_P_center), half_extents=tuple(float(max(v / 2, MINIMUM_HALF_EXTENT_M)) for v in bb.dimensions),
+            rotation=tuple(tuple(float(v) for v in row) for row in R), faces=faces)
+
+    def instance_of(self, node_id: str) -> int:
+        """The node's instance label (evaluation side: the bridge to the oracle)."""
+        return int(self.dsg_node(node_id).attributes.semantic_label)
+
+    def n_vertices(self, node_id: str) -> int:
+        return int(self._faces[node_id]["n_vertices"])
+
+
+@dataclass
+class IdBridge:
+    """The one crossing point between filter-side (Hydra) ids and evaluation-side (oracle) ids.
+
+    Built from the instance labels of the map: hydra node -> instance -> oracle node (many to one). With the oracle
+    graph on the filter side it is the identity. Every conversion checks that both nodes have the same category.
+    """
+
+    oracle_of: dict[str, str]  # filter-side id -> oracle id
+    hydra_of: dict[str, list[str]]  # oracle id -> filter-side ids of that instance
+    category: dict[str, int]  # "H:<id>" / "O:<id>" -> category label (for the check)
+    prefix: str  # "H:" when the filter side is Hydra, "O:" when it is the oracle itself
+
+    @classmethod
+    def identity(cls, oracle_graph: SceneGraph) -> "IdBridge":
+        cat = {f"O:{oid}": n.label for oid, n in oracle_graph.nodes.items()}
+        return cls(oracle_of={oid: oid for oid in oracle_graph.nodes}, hydra_of={oid: [oid] for oid in oracle_graph.nodes}, category=cat, prefix="O:")
+
+    @classmethod
+    def from_instances(cls, hydra_graph: HydraSceneGraph, oracle_graph: SceneGraph) -> "IdBridge":
+        oracle_of_label = {int(k): v for k, v in hydra_graph.meta["oracle_of_label"].items()}
+        oracle_of, hydra_of, cat = {}, {}, {f"O:{oid}": n.label for oid, n in oracle_graph.nodes.items()}
+        for hydra_id, n in hydra_graph.nodes.items():
+            oracle_ids = oracle_of_label.get(hydra_graph.instance_of(hydra_id), [])
+            cat[f"H:{hydra_id}"] = n.label
+            if len(oracle_ids) == 1:  # instance labels: exactly one oracle node per label
+                oracle_of[hydra_id] = oracle_ids[0]
+                hydra_of.setdefault(oracle_ids[0], []).append(hydra_id)
+        for oid in hydra_of:  # largest node first (node_of picks it)
+            hydra_of[oid].sort(key=lambda h: -hydra_graph.n_vertices(h))
+        return cls(oracle_of=oracle_of, hydra_of=hydra_of, category=cat, prefix="H:")
+
+    def to_oracle(self, filter_id: str) -> str | None:
+        oracle_id = self.oracle_of.get(filter_id)
+        if oracle_id is not None:
+            assert self.category[f"{self.prefix}{filter_id}"] == self.category[f"O:{oracle_id}"], f"id mix-up: {self.prefix}{filter_id} -> O:{oracle_id}"
+        return oracle_id
+
+    def instance_nodes(self, filter_id: str) -> list[str]:
+        """Every filter-side node of the same instance (a role's exemption covers all of them)."""
+        oracle_id = self.to_oracle(filter_id)
+        return list(self.hydra_of.get(oracle_id, [filter_id])) if oracle_id is not None else [filter_id]
+
+    def unmapped(self, oracle_graph: SceneGraph) -> list[str]:
+        """Oracle nodes the map has no node for (never seen, or too small)."""
+        return [oid for oid in oracle_graph.nodes if oid not in self.hydra_of]
+
+    def as_dict(self) -> dict:
+        return {"prefix": self.prefix, "oracle_of": dict(self.oracle_of)}
+
+
+def hydra_lookup(oracle_lookup: "OracleLookup", bridge: IdBridge) -> "OracleLookup":
+    """OracleLookup for the Hydra graph (evaluation and execution side: resolving the hand-written plans' RoboCasa
+    references). ``node_of`` picks the largest Hydra node of an instance; an instance with no Hydra node has none."""
+    out = OracleLookup(meta=dict(oracle_lookup.meta))
+    for name, oracle_id in oracle_lookup.node_of.items():
+        if bridge.hydra_of.get(oracle_id):
+            out.node_of[name] = bridge.hydra_of[oracle_id][0]
+    for oracle_id, hydra_ids in bridge.hydra_of.items():
+        for hydra_id in hydra_ids:
+            out.bodies[hydra_id] = oracle_lookup.bodies[oracle_id]
+    for obj, fixture in oracle_lookup.support.items():
+        if bridge.hydra_of.get(obj) and bridge.hydra_of.get(fixture):
+            for hydra_id in bridge.hydra_of[obj]:
+                out.support[hydra_id] = bridge.hydra_of[fixture][0]
+    return out
 
 
 # --------------------------------------------------------------------------- ground-truth side

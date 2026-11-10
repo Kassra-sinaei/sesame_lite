@@ -8,8 +8,14 @@ garbage collector runs, it looked random (imports and allocations changed the ti
 
 The fix makes the old context current before freeing it. robosuite makes the live context current again before
 each render, so nothing else changes. Applied on import; third_party code is not edited.
+
+``mujoco.Renderer.close`` (the free cameras of the video and of the Hydra mapping pass) has the same flaw the other
+way round: it destroys its GL context first and then calls ``mjr_freeContext`` with whatever context is current,
+which can be robosuite's. It gets the same fix: free the MuJoCo context with its own GL context current, then the
+GL context.
 """
 
+import mujoco
 from robosuite.utils.binding_utils import MjRenderContext
 
 
@@ -23,3 +29,19 @@ def _free_own_context(self) -> None:
 
 
 MjRenderContext.__del__ = _free_own_context
+
+
+def _close_renderer(self) -> None:
+    gl, mjr = getattr(self, "_gl_context", None), getattr(self, "_mjr_context", None)
+    self._mjr_context = self._gl_context = None
+    try:
+        if gl and mjr:
+            gl.make_current()  # mjr_freeContext acts on the current context: make it this renderer's own
+            mjr.free()
+        if gl:
+            gl.free()
+    except Exception:  # interpreter shutdown: the display is already gone
+        pass
+
+
+mujoco.Renderer.close = _close_renderer

@@ -40,7 +40,7 @@ from sesame_lite.filter import CONTROL_DT_S, MODE_INDEX, FilterPolicy, PerRowFil
 from sesame_lite.geometry.swept_volume import BETA_DEVIATION_BUDGET_M
 from sesame_lite.planner import NAVIGATION, VLA, build_bundle, default_plan, resolve_plan
 from sesame_lite.determinism import SAMPLER_SEED, begin_episode, seed_fallback_generators
-from sesame_lite.scene_graph import _raw_data, _raw_model, _subtree_body_ids, capture_scene_graph, perturb
+from sesame_lite.scene_graph import HydraSceneGraph, IdBridge, _raw_data, _raw_model, _subtree_body_ids, capture_scene_graph, hydra_lookup, perturb
 import sesame_lite.render_fix  # noqa: F401,E402  (stops freed render contexts from corrupting camera frames)
 
 # The checkpoint's own camera assignment (policy_preprocessor.json); lerobot's docs swap camera2/camera3.
@@ -148,12 +148,20 @@ class SesameRoboCasaEnv(RoboCasaEnv):
 # ---------------------------------------------------------------------- safety filter wrapper
 
 
+class UnmappedRoleError(RuntimeError):
+    """A plan role names an object the Hydra map has no node for: the mission stops (nothing is filled in from the oracle)."""
+
+
+
 class SafetyFilterEnv(gym.Wrapper):
     """Per-row semantic safety filter in front of ``SesameRoboCasaEnv``; segments come from a plan."""
 
-    def __init__(self, env: SesameRoboCasaEnv, *, pruning: bool = True, filter: bool = True, classifier: str = "prior", policy: FilterPolicy = FilterPolicy(), graph_noise: dict | None = None, noise_seed: int = 0):
+    def __init__(self, env: SesameRoboCasaEnv, *, pruning: bool = True, filter: bool = True, classifier: str = "prior", policy: FilterPolicy = FilterPolicy(), graph_noise: dict | None = None, noise_seed: int = 0, graph_source: str = "oracle"):
         super().__init__(env)
+        if graph_source not in ("oracle", "hydra"):
+            raise ValueError(graph_source)
         self.pruning, self.filter_on, self.classifier_kind, self.policy = pruning, filter, classifier, policy
+        self.graph_source = graph_source
         self.tag = run_tag(pruning, filter)
         self.graph_noise, self.noise_seed = graph_noise, noise_seed
         self._classifier = CLASSIFIERS[classifier]() if (pruning and filter) else None  # the classifier only runs when it can change something
@@ -197,16 +205,17 @@ class SafetyFilterEnv(gym.Wrapper):
             v[2] = float(np.arctan2(np.sin(yaw - pyaw), np.cos(yaw - pyaw))) / CONTROL_DT_S
         return RobotState(base_position=bp, base_rotation=R, eef_position=eef, base_rectangle_xy=self.rect, base_mode=base_mode, base_velocity=v, yaw_axis_xy=self.yaw_axis_xy(bp, R), arm_points=self.arm_points(), command_theta=yaw - self.init_yaw)
 
-    def _touched_nodes(self) -> set[str]:
+    def _touched_oracle_ids(self) -> set[str]:
+        """Oracle nodes the robot touches now (MuJoCo contacts map to oracle ids only)."""
         model, data = _raw_model(self.rs.sim), _raw_data(self.rs.sim)
         out = set()
         for i in range(data.ncon):
             c = data.contact[i]
             b1, b2 = int(model.geom_bodyid[c.geom1]), int(model.geom_bodyid[c.geom2])
-            if b1 in self.robot_bodies and b2 in self.body_to_node:
-                out.add(self.body_to_node[b2])
-            elif b2 in self.robot_bodies and b1 in self.body_to_node:
-                out.add(self.body_to_node[b1])
+            if b1 in self.robot_bodies and b2 in self.oracle_id_of_body:
+                out.add(self.oracle_id_of_body[b2])
+            elif b2 in self.robot_bodies and b1 in self.oracle_id_of_body:
+                out.add(self.oracle_id_of_body[b1])
         return out
 
     # ------------------------------------------------------------------ episode set-up
@@ -214,6 +223,8 @@ class SafetyFilterEnv(gym.Wrapper):
     def reset(self, seed=None, *, plan: dict | None = None, **kwargs):
         obs, info = self.env.reset(seed=seed)
         rs, model = self.rs, _raw_model(self.rs.sim)
+        self.seed, self.mission = int(seed or 0), (plan or {}).get("mission", self.env.task)
+        self.n_capture = 0
         self._capture()
         bp, R, _ = self.robot_pose()
         self.init_yaw = float(np.arctan2(R[1, 0], R[0, 0]))  # the base controller's reference orientation
@@ -229,8 +240,8 @@ class SafetyFilterEnv(gym.Wrapper):
         # a goal must leave room for the filter's standoff: margin + the ISSf equilibrium d/alpha + 1 cm
         standoff = self.policy.policy_margin_m + self.policy.disturbance_margin_mps / self.policy.barrier_gain + 0.01
         self.plan_kwargs = dict(base_xy=bp[:2], rect_xy=self.rect, z_band=self.z_band, clearance_m=standoff, inflation_m=float(hi[1] - lo[1]) / 2 + 0.10)
-        self.segments = resolve_plan(self.plan, rs, self.graph, self.lookup, language=self.env.task_description, **self.plan_kwargs)
-        self.gt_passable = set()
+        self.segments = self._resolve()
+        self.gt_passable_oracle_ids = set()
         if self.plan.get("injections") and self.segments[0].kind == NAVIGATION:
             # floor objects are dropped onto the planned path, then the graph is captured again (the path planner
             # only knows fixtures, as a navigation stack's static map would; the objects enter through the 3DSG)
@@ -239,14 +250,14 @@ class SafetyFilterEnv(gym.Wrapper):
             place_on_path(rs, self.segments[0].path_polyline_xy)
             first = self.segments
             self._capture()  # objects are renumbered by position: resolve the roles again on the new graph
-            self.segments = resolve_plan(self.plan, rs, self.graph, self.lookup, language=self.env.task_description, **self.plan_kwargs)
+            self.segments = self._resolve()
             for old, new in zip(first, self.segments):  # but keep the path the mats were dropped on
                 new.path_polyline_xy, new.goal_yaw, new.goal_offset_m, new.center_xy = old.path_polyline_xy, old.goal_yaw, old.goal_offset_m, old.center_xy
-            self.gt_passable = {self.lookup.node(f"object:{inj['name']}") for inj in self.plan["injections"] if inj.get("ground_truth") == "passable"} - {None}
-        # contact bookkeeping (MuJoCo body -> scene-graph node), from the oracle lookup
-        self.body_to_node = {b: nid for nid, bodies in self.lookup.bodies.items() for b in bodies}
+            self.gt_passable_oracle_ids = {self.oracle_lookup.node(f"object:{inj['name']}") for inj in self.plan["injections"] if inj.get("ground_truth") == "passable"} - {None}
+        # contact bookkeeping (MuJoCo body -> oracle node), from the oracle lookup
+        self.oracle_id_of_body = {b: oracle_id for oracle_id, bodies in self.oracle_lookup.bodies.items() for b in bodies}
         self.robot_bodies = _subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, rs.robots[0].robot_model.root_body))
-        self.receipts, self.ground_truth, self.bundles, self.min_h_by_node = [], [], [], {}
+        self.receipts, self.ground_truth, self.bundles, self.min_h_by_oracle_id = [], [], [], {}
         self.tick, self.epoch, self.hold_streak, self._prev_pose = 0, 0, 0, None
         self.replans, self.segment_index = 0, -1
         self.begin_segment(0)
@@ -255,10 +266,44 @@ class SafetyFilterEnv(gym.Wrapper):
         return obs, info
 
     def _capture(self) -> None:
-        """Oracle scene graph (Hydra format) of the current kitchen, its noisy copy for the filter, and the lookup."""
-        self.oracle_graph, self.lookup = capture_scene_graph(self.rs)
-        self.graph = perturb(self.oracle_graph, np.random.default_rng(self.noise_seed), **self.graph_noise) if self.graph_noise else self.oracle_graph
+        """The scene graph the filter side uses (``graph_source``) and the oracle graph of the evaluation side.
+
+        oracle: the oracle graph itself (or its noisy copy); the id bridge is the identity.
+        hydra:  Hydra's graph from the mapping pass, cached in outputs/maps/<mission>_s<seed>_<n>/ (n = 0 at reset,
+                1 after the injections); built here if the cache is missing. The cache must belong to this exact scene.
+        """
+        self.oracle_graph, self.oracle_lookup = capture_scene_graph(self.rs)
+        if self.graph_source == "oracle":
+            self.graph = perturb(self.oracle_graph, np.random.default_rng(self.noise_seed), **self.graph_noise) if self.graph_noise else self.oracle_graph
+            self.bridge, self.lookup = IdBridge.identity(self.oracle_graph), self.oracle_lookup
+        else:
+            from sesame_lite.mapping import build_map, map_dir
+
+            cache = map_dir(self.mission, self.seed, self.n_capture)
+            if not (cache / "faces.json").exists():
+                build_map(self.rs, self.oracle_graph, self.oracle_lookup, cache, seed=self.seed)
+            cached_id = json.loads((cache / "meta.json").read_text())["oracle_snapshot_id"]
+            assert cached_id == self.oracle_graph.snapshot_id, f"map cache {cache} belongs to another scene ({cached_id} != {self.oracle_graph.snapshot_id})"
+            bp, R, _ = self.robot_pose()
+            self.graph = HydraSceneGraph(cache, self.oracle_graph.labels, robot_pose=(bp, float(np.arctan2(R[1, 0], R[0, 0]))))
+            self.bridge = IdBridge.from_instances(self.graph, self.oracle_graph)
+            self.lookup = hydra_lookup(self.oracle_lookup, self.bridge)
+        self.n_capture += 1
         self.oracle_fragments, self.fragments = self.oracle_graph.fragments(), self.graph.fragments()
+
+    def _resolve(self):
+        """Plan roles -> filter-side nodes; a role's exemption covers every node of its instance. A role that resolves
+        to no node of a Hydra map (the target was never mapped) stops the mission: it is never filled in from the oracle."""
+        from sesame_lite.planner import resolve_role
+
+        if self.graph_source == "hydra":
+            missing = [name for name, spec in self.plan.get("roles", {}).items() if resolve_role(spec, self.rs, self.lookup) is None]
+            if missing:
+                raise UnmappedRoleError(f"role(s) {missing} resolve to no node of the Hydra map {self.graph.map_dir}")
+        segments = resolve_plan(self.plan, self.rs, self.graph, self.lookup, language=self.env.task_description, **self.plan_kwargs)
+        for seg in segments:
+            seg.exempt_ids = tuple(dict.fromkeys(h for hydra_id in seg.exempt_ids for h in self.bridge.instance_nodes(hydra_id)))
+        return segments
 
     def begin_segment(self, index: int) -> None:
         """Prune for one segment (an epoch) and fix its row set."""
@@ -268,11 +313,11 @@ class SafetyFilterEnv(gym.Wrapper):
         seg = self.segments[index]
         self.bundle = build_bundle(seg, self.graph, classifier=self._classifier, base_circumscribed_radius_m=self.base_radius, policy_margin_m=self.policy.policy_margin_m, eef_reach_m=1.0 * CONTROL_DT_S)
         self.bundles.append(self.bundle)
-        row_nodes = self.bundle.admitted_ids if self.pruning else [n.node_id for n in self.graph.obstacle_nodes()]
-        self.row_ids = self.graph.fragment_ids_of(row_nodes, exempt=seg.exempt_ids)
+        row_ids = self.bundle.admitted_ids if self.pruning else [n.node_id for n in self.graph.obstacle_nodes()]
+        self.row_ids = self.graph.fragment_ids_of(row_ids, exempt=seg.exempt_ids)
         # ground truth: every non-exempt node of the oracle graph (and nothing drivable by construction), the same for every switch setting
-        self.exempt_nodes = set(seg.exempt_ids) | set(self.gt_passable)
-        self.eval_ids = self.oracle_graph.fragment_ids_of([n.node_id for n in self.oracle_graph.obstacle_nodes()], exempt=self.exempt_nodes)
+        self.exempt_oracle_ids = {self.bridge.to_oracle(hydra_id) for hydra_id in seg.exempt_ids} - {None} | set(self.gt_passable_oracle_ids)
+        self.eval_ids = self.oracle_graph.fragment_ids_of([n.node_id for n in self.oracle_graph.obstacle_nodes()], exempt=self.exempt_oracle_ids)
         self.epoch += 1
         self.segment_start_tick = self.tick
 
@@ -280,11 +325,15 @@ class SafetyFilterEnv(gym.Wrapper):
     def segment(self):
         return self.segments[self.segment_index]
 
+    @property
+    def unmapped_oracle_ids(self) -> list[str]:
+        return self.bridge.unmapped(self.oracle_graph)
+
     def _true_h(self, state: RobotState) -> float | None:
         samples, _, _ = self.filter.build_rows(state, self.oracle_fragments, base_rows_for=self.eval_ids, eef_rows_for=self.eval_ids, skip_beyond_m=GT_HORIZON_M)
         for s in samples:
-            nid = s.obstacle_parent_id
-            self.min_h_by_node[nid] = min(self.min_h_by_node.get(nid, np.inf), s.value)
+            key = f"O:{s.obstacle_parent_id}"
+            self.min_h_by_oracle_id[key] = min(self.min_h_by_oracle_id.get(key, np.inf), s.value)
         return min((s.value for s in samples), default=None)
 
     # ------------------------------------------------------------------ gym API
@@ -294,7 +343,10 @@ class SafetyFilterEnv(gym.Wrapper):
         self._prev_pose = (state.base_position[:2].copy(), float(np.arctan2(state.base_rotation[1, 0], state.base_rotation[0, 0])))
         a_out, receipt = self.filter.filter_action(tick=self.tick, action=action, state=state, fragments=self.fragments, base_rows_for=self.row_ids, eef_rows_for=self.row_ids, passive=not self.filter_on)
         rec = receipt.as_dict()
-        rec.update(segment=self.segment_index, epoch=self.epoch)
+        filter_id = rec["h_min_row"].split(":")[-1] if rec["h_min_row"] else None
+        oracle_id = self.bridge.to_oracle(filter_id) if filter_id else None
+        rec.update(segment=self.segment_index, epoch=self.epoch, graph_source=self.graph_source,
+                   h_min_id=f"{self.bridge.prefix}{filter_id}" if filter_id else None, h_min_oracle_id=f"O:{oracle_id}" if oracle_id else None)
         self.receipts.append(rec)
         self.hold_streak = self.hold_streak + 1 if rec["outcome"] == "hold" else 0
         self.ground_truth.append(
@@ -302,7 +354,7 @@ class SafetyFilterEnv(gym.Wrapper):
                 "tick": self.tick,
                 "segment": self.segment_index,
                 "h_min_all": self._true_h(state),
-                "touched": sorted(self._touched_nodes() - self.exempt_nodes),
+                "touched": sorted(f"O:{oracle_id}" for oracle_id in self._touched_oracle_ids() - self.exempt_oracle_ids),
                 "base_xy": state.base_position[:2].round(4).tolist(),
                 "yaw": float(np.arctan2(state.base_rotation[1, 0], state.base_rotation[0, 0])),
                 "eef": state.eef_position.round(4).tolist(),
@@ -397,7 +449,11 @@ class SafetyFilterEnv(gym.Wrapper):
             "severity_ms": float(sum(max(0.0, -h - m) * CONTROL_DT_S for h in h_all)),
             "ticks_below_margin_all": sum(h < -m for h in h_all),
             "contact_ticks": contact_ticks,
-            "contact_nodes": sorted({n for g in gt for n in g["touched"]}),
+            "contact_nodes": sorted({oracle_id for g in gt for oracle_id in g["touched"]}),
+            # contacts with objects the map has no node for (the filter cannot protect them; scoring still counts them)
+            "contact_unmapped_nodes": sorted({oracle_id for g in gt for oracle_id in g["touched"] if oracle_id[2:] in set(self.unmapped_oracle_ids)}),
+            "graph_source": self.graph_source,
+            "unmapped_oracle_ids": [f"O:{oracle_id}" for oracle_id in self.unmapped_oracle_ids],
             "holds": self.filter.hold_count,
             "infeasible": self.filter.infeasible_count,
             "relaxed": self.filter.relaxed_count,
@@ -409,8 +465,9 @@ class SafetyFilterEnv(gym.Wrapper):
             "classifier_latency_s": [b.classifier_latency_s for b in self.bundles],
             "classifier_fallback": any(bool(b.classification and b.classification.fallback_used) for b in self.bundles),
             "goal_offset_m": [s.goal_offset_m for s in self.segments],
-            "exempt": sorted(self.exempt_nodes),
-            "layout": self.lookup.meta,
+            "exempt": sorted(f"O:{oracle_id}" for oracle_id in self.exempt_oracle_ids),
+            "exempt_filter_side": sorted(f"{self.bridge.prefix}{i}" for i in self.segment.exempt_ids),
+            "layout": self.oracle_lookup.meta,
             "snapshot_id": self.oracle_graph.snapshot_id,
             "unseeded_rng_calls": SAMPLER_SEED[1],
         }
@@ -427,8 +484,9 @@ class SafetyFilterEnv(gym.Wrapper):
                     "segments": [s.as_dict() for s in self.segments],
                     "bundles": [b.as_dict() for b in self.bundles],
                     "graph": self.graph.as_dict(),
-                    "oracle_lookup": self.lookup.as_dict(),  # evaluation side only
-                    "min_h_by_node": self.min_h_by_node,
+                    "oracle_lookup": self.oracle_lookup.as_dict(),  # evaluation side only
+                    "id_bridge": self.bridge.as_dict(),  # filter-side id -> oracle id
+                    "min_h_by_oracle_id": self.min_h_by_oracle_id,
                     "receipts": self.receipts,
                     "ground_truth": self.ground_truth,
                 },
@@ -577,7 +635,7 @@ def run_tag(pruning: bool, filter: bool) -> str:
     return "_".join(off) or "sesame"
 
 
-def run_episode(*, task: str, seed: int, nominal: str, classifier: str, out_dir: Path, pruning: bool = True, filter: bool = True, plan_path: str | None = None, env_kwargs: dict | None = None, max_steps: int | None = None, graph_noise: dict | None = None, video: bool = False) -> dict:
+def run_episode(*, task: str, seed: int, nominal: str, classifier: str, out_dir: Path, pruning: bool = True, filter: bool = True, graph_source: str = "oracle", plan_path: str | None = None, env_kwargs: dict | None = None, max_steps: int | None = None, graph_noise: dict | None = None, video: bool = False) -> dict:
     """Run one (task, seed) with one switch setting in this process (the kitchen is hard-reset from the seed)."""
     import sesame_lite.tasks  # noqa: F401  (registers the task variants with robosuite)
     from sesame_lite.planner import load_plan
@@ -590,7 +648,7 @@ def run_episode(*, task: str, seed: int, nominal: str, classifier: str, out_dir:
         max_steps = max_steps or plan.get("horizon")
     base_env = SesameRoboCasaEnv(task, env_kwargs=env_kwargs, episode_length=max_steps)
     t0 = time.time()
-    env = SafetyFilterEnv(base_env, pruning=pruning, filter=filter, classifier=classifier, graph_noise=graph_noise)
+    env = SafetyFilterEnv(base_env, pruning=pruning, filter=filter, classifier=classifier, graph_noise=graph_noise, graph_source=graph_source)
     obs, _ = env.reset(seed=seed, plan=plan)
     vla = SmolVLAPolicy(task) if (nominal == "smolvla" or any(s.kind == VLA for s in env.segments)) else None
     recorder = None
