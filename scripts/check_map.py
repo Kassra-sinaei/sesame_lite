@@ -1,18 +1,16 @@
-"""Phase 1 checks of the Hydra map of one scene (spec 4.8), written next to the map: check.md, check.json, face_sigma.pdf.
+"""Checks of the Hydra map of one scene, written next to the map: check.md, check.json.
 
     MUJOCO_GL=egl .venv/bin/python -s scripts/check_map.py --plan plans/nav_clutter.json --seed 100
 
 The scene is rebuilt from the seed and the cached maps are loaded (nothing is mapped again). Ground truth is used
-here, for evaluation only:
-  1. faces.json lists every node with category, box and six faces
+here, for evaluation only. There is no check of the map claim (PDF Lemma 1) in this version (spec v4, section 9).
+  1. points (spec v4, section 5): points per node, points dropped for having no std, e_max and m_r, the share of
+     capped points per node and the distribution of kappa_j * s_bar_m (kappa for every node admitted, as planning)
   2. match table: per oracle node, the Hydra node(s) of its instance, centre distance, extent difference, tilt, yaw
-  3. coverage: per observed face of an instance with exactly one Hydra node, the error e = truth - b_hat (truth = the
-     outermost point of the instance's visual geoms along the face normal) against kappa*sigma and kappa*sigma + m_r
-  4. face_sigma.pdf: top view with oracle, Hydra and confidence boxes, and a histogram of kappa*sigma
+  3. the oriented-box check: OBB volume <= RAABB volume of the same vertices, and the tilt of upright fixtures
+  4. the mapping route and the noise model on planar walls
   5. the category-label map of the same scene (if built with map_scene.py --labels category): merges, splits, and
-     whether the robot's start footprint overlaps a box
-  plus the oriented-box check: OBB volume <= RAABB volume of the same vertices, and the tilt of upright fixtures.
-kappa uses delta split over every node of the map (the most conservative admitted count) unless --n-admitted is given.
+     the clearance of the robot's start footprint from the balls
 """
 
 import argparse
@@ -24,50 +22,31 @@ from pathlib import Path
 if os.environ.get("PYTHONHASHSEED") != "0":
     os.execve(sys.executable, [sys.executable, *sys.argv], {**os.environ, "PYTHONHASHSEED": "0"})
 
-import matplotlib  # noqa: E402
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import spark_dsg as dsg  # noqa: E402
-from matplotlib.lines import Line2D  # noqa: E402
-from matplotlib.patches import Patch, Polygon  # noqa: E402
 from shapely.geometry import MultiPoint  # noqa: E402
-from shapely.geometry import Polygon as ShapelyPolygon  # noqa: E402
 
 import sesame_lite.tasks  # noqa: F401,E402
 from sesame_lite.env import SafetyFilterEnv, SesameRoboCasaEnv  # noqa: E402
 from sesame_lite.mapping import map_dir  # noqa: E402
 from sesame_lite.planner import load_plan  # noqa: E402
-from sesame_lite.uncertainty import confidence_box, kappa  # noqa: E402
-
-plt.rcParams.update({
-    "font.family": "serif", "font.serif": ["Nimbus Roman", "Times New Roman", "Liberation Serif"], "mathtext.fontset": "stix",
-    "pdf.fonttype": 42, "font.size": 8, "axes.labelsize": 8, "legend.fontsize": 7, "xtick.labelsize": 7, "ytick.labelsize": 7,
-    "axes.linewidth": 0.6, "savefig.dpi": 600, "figure.facecolor": "white",
-})
+from sesame_lite.filter import FilterPolicy  # noqa: E402
+from sesame_lite.planner import base_clearance  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--plan", required=True)
 ap.add_argument("--seed", type=int, default=100)
-ap.add_argument("--delta", type=float, default=0.01, help="risk of the confidence boxes (spec 5.1)")
-ap.add_argument("--m-d", type=float, default=0.025, help="ISSf disturbance margin d_bar^2 / (4 eps alpha) (spec 5.3)")
-ap.add_argument("--n-admitted", type=int, default=None, help="admitted count for kappa (default: every node of the map)")
 args = ap.parse_args()
 
 mission = load_plan(args.plan)
 base = SesameRoboCasaEnv(mission["task"], env_kwargs=dict(mission.get("env_kwargs", {})), episode_length=mission.get("horizon"))
-env = SafetyFilterEnv(base, filter=False, graph_source="hydra")
+env = SafetyFilterEnv(base, filter=False)
 env.reset(seed=args.seed, plan=mission)  # loads the cached maps; the last one is the scene the episode runs in
 n_map = env.n_capture - 1
 out_dir = map_dir(mission["mission"], args.seed, n_map)
-hydra, oracle, bridge, labels = env.base_graph, env.oracle_graph, env.bridge, env.oracle_graph.labels  # estimated boxes (no confidence inflation)
+hydra, oracle, bridge, labels = env.graph, env.oracle_graph, env.bridge, env.oracle_graph.labels
 oracle_name = {v: k for k, v in env.oracle_lookup.node_of.items()}
-faces_file = json.loads((out_dir / "faces.json").read_text())
-voxel = hydra.voxel_size_m
-n_adm = args.n_admitted or len(hydra.nodes)
-kap = kappa(args.delta, n_adm)
-kap1 = kappa(args.delta, 1)
+policy = FilterPolicy()
 report, summary = [], {}
 
 
@@ -94,16 +73,6 @@ def world_dims(node):
     return out
 
 
-def footprint(node, half=None, center=None):
-    frag = node.fragment()
-    R = frag.rotation
-    h = np.asarray(frag.half_extents if half is None else half)
-    c = np.asarray(frag.center if center is None else center)
-    signs = np.array([(sx, sy, sz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)], dtype=float)
-    corners = c + (signs * h) @ R.T
-    return np.asarray(MultiPoint([tuple(p) for p in corners[:, :2]]).convex_hull.exterior.coords)
-
-
 def min_area_rect(xy):
     """Smallest-area rectangle around 2-D points (monotone-chain hull, rotating edges), returns its area."""
     pts = np.unique(np.round(np.asarray(xy, dtype=np.float64), 9), axis=0)
@@ -123,17 +92,33 @@ def min_area_rect(xy):
     return float(best)
 
 
-# ------------------------------------------------------------------ 1. faces.json
-complete = all(len(n["faces"]) == 6 and all(set(f) >= {"offset", "sigma", "observed"} for f in n["faces"]) for n in faces_file["nodes"])
-src = faces_file["vertex_std_source_counts"]
-summary["faces"] = {"nodes": len(faces_file["nodes"]), "every_node_has_six_faces": complete, "vertex_std_source_counts": src,
-                    "max_box_reproduction_error_m": faces_file["max_box_reproduction_error_m"]}
+# ------------------------------------------------------------------ 1. points
+pts_summary = json.loads((out_dir / "points_summary.json").read_text())
+balls = env.plan_balls  # kappa for every node admitted (planning, standoff, pruning, start check)
+point_rows = []
+for nid, b in balls.items():
+    node = hydra.nodes[nid]
+    point_rows.append({"hydra_id": nid, "category": node.category, "points": len(b.points), "dropped": pts_summary["dropped_by_node"].get(nid, 0),
+                       "kappa": b.kappa, "s_max_m": b.s_max, "capped_share": float(b.capped.mean()),
+                       "kappa_s_bar_median_m": float(np.median(b.kappa * np.minimum(node.std, b.s_max))), "rho_max_m": float(b.rho.max())})
+ks = np.concatenate([b.kappa * np.minimum(hydra.nodes[nid].std, b.s_max) for nid, b in balls.items()])
+capped = np.concatenate([b.capped for b in balls.values()])
+summary["points"] = {"nodes": len(balls), "points": int(sum(len(b.points) for b in balls.values())), "dropped_points": pts_summary["dropped_points"],
+                     "nodes_without_points": hydra.nodes_without_points, "e_max_m": hydra.e_max, "m_r_m": hydra.m_r, "m_d_m": policy.m_d,
+                     "std_source_counts": pts_summary["std_source_counts"], "capped_share": float(capped.mean()),
+                     "kappa_s_bar_quantiles_m": dict(zip(["min", "10%", "50%", "90%", "99%", "max"], np.percentile(ks, [0, 10, 50, 90, 99, 100]).round(5).tolist()))}
+P = summary["points"]
 report += [f"# Hydra map check: {mission['mission']}, seed {args.seed}, map n = {n_map}", "",
            f"Map: `{out_dir.relative_to(Path.cwd()) if out_dir.is_relative_to(Path.cwd()) else out_dir}` (oracle snapshot `{oracle.snapshot_id}`).", "",
-           "## 1. faces.json", "",
-           f"- {len(faces_file['nodes'])} object nodes, each with six faces (offset, sigma, observed): {'yes' if complete else 'NO'}.",
-           f"- b_hat (max over the node's vertices along each face normal) reproduces Hydra's own box to {1000 * faces_file['max_box_reproduction_error_m']:.4f} mm.",
-           f"- Vertex std from the grid edge (eq. 2): {src['grid_edge']} supporting vertices; from the bound sigma0^2/min(w) (vertex not on a sign-changing grid edge of the final TSDF): {src['bound']}; none: {src['none']}.", ""]
+           "## 1. Points", "",
+           f"- {P['points']} points on {P['nodes']} object nodes; {P['dropped_points']} mesh vertices dropped for having no std (per node below); nodes left with no point: "
+           + (", ".join(f"H:{h}" for h in P["nodes_without_points"]) or "none") + ".",
+           f"- Std from the grid edge (eq. 2): {P['std_source_counts']['grid_edge']} points; from the bound sigma0^2/min(w) of the voxels around the vertex: {P['std_source_counts']['bound']}.",
+           f"- e_max = {100 * P['e_max_m']:.2f} cm (longest edge of the mesh triangles inside object nodes), m_r = e_max / sqrt(3) = {100 * P['m_r_m']:.2f} cm; m_d = {100 * P['m_d_m']:.1f} cm.",
+           f"- With every node admitted (delta_j = {policy.delta} / {len(balls)}): capped points (s_m > s_max) {100 * P['capped_share']:.1f} % of all; "
+           "kappa_j * s_bar_m: " + ", ".join(f"{k} {100 * v:.2f} cm" for k, v in P["kappa_s_bar_quantiles_m"].items()) + ".", "",
+           "| Hydra | category | points | dropped | kappa_j | s_max [mm] | capped [%] | median kappa*s_bar [mm] | largest rho [cm] |", "|---|---|---|---|---|---|---|---|---|"]
+report += [f"| H:{r['hydra_id']} | {r['category']} | {r['points']} | {r['dropped']} | {r['kappa']:.2f} | {1000 * r['s_max_m']:.1f} | {100 * r['capped_share']:.1f} | {1000 * r['kappa_s_bar_median_m']:.1f} | {100 * r['rho_max_m']:.1f} |" for r in point_rows] + [""]
 
 # ------------------------------------------------------------------ 2. match table
 rows, unmatched_oracle = [], []
@@ -186,63 +171,6 @@ report += ["## Oriented boxes", "",
            "- Fixtures over 3 deg, with their vertex count and OBB / upright-box volume: " + (", ".join(f"H:{r['hydra_id']} {hydra.nodes[r['hydra_id']].category} ({r['tilt_deg']:.1f} deg, {hydra.n_vertices(r['hydra_id'])} vertices, {r['obb_m3'] / r['raabb_m3']:.2f})" for r in leaning) or "none") + ".",
            "- Free objects tilted over 3 deg: " + (", ".join(f"H:{h} ({t} deg, {hydra.nodes[h].category})" for h, t in summary['obb']['objects_tilted_over_3_deg']) or "none") + ".", ""]
 
-# ------------------------------------------------------------------ 3. coverage
-FACE = ["+x", "-x", "+y", "-y", "+z", "-z"]
-records, unobserved = [], []
-single = {o: v[0] for o, v in bridge.hydra_of.items() if len(v) == 1}
-faces_by_node = {n["node_id"]: n for n in faces_file["nodes"]}
-for oracle_id, hydra_id in single.items():
-    for k, f in enumerate(faces_by_node[hydra_id]["faces"]):
-        rec = {"oracle_id": oracle_id, "hydra_id": hydra_id, "face": k, "category": hydra.nodes[hydra_id].category,
-               "own_near_truth": f["own_near_truth"], "best_view_angle_deg": f["best_view_angle_deg"]}
-        if not f["observed"] or f["truth"] is None:
-            unobserved.append(rec)
-            continue
-        rec.update(e_m=f["truth"] - f["offset"], sigma_m=f["sigma"])
-        records.append(rec)
-e = np.array([r["e_m"] for r in records])
-sig = np.array([r["sigma_m"] for r in records])
-z = e / sig
-# m_r sweep (spec item 5); "nearly none" fixed before the run: at most NEARLY_NONE of the observed faces
-NEARLY_NONE = 0.02
-M_R_FACTORS = (0.25, 0.5, 1.0)
-sweep = {f: int(np.sum(e > kap * sig + f * voxel)) for f in M_R_FACTORS}
-passing = [f for f in M_R_FACTORS if sweep[f] <= NEARLY_NONE * len(records)]
-chosen = passing[0] if passing else None
-m_r = (chosen if chosen is not None else M_R_FACTORS[-1]) * voxel
-n_over = int(np.sum(e > kap * sig))
-reasons = {"no own vertex near the true supporting point": sum(not r["own_near_truth"] for r in unobserved),
-           "never viewed within 60 deg of the normal": sum(r["own_near_truth"] and not (r["best_view_angle_deg"] is not None and r["best_view_angle_deg"] <= 60) for r in unobserved)}
-summary["coverage"] = {"kappa": kap, "n_admitted_for_kappa": n_adm, "kappa_single_object": kap1, "observed_faces": len(records), "unobserved_faces": len(unobserved),
-                       "unobserved_reasons": reasons, "e_mean_m": float(e.mean()), "e_std_m": float(e.std()),
-                       "e_over_sigma_quantiles": dict(zip(["1%", "10%", "50%", "90%", "99%", "max"], np.percentile(z, [1, 10, 50, 90, 99, 100]).round(2).tolist())),
-                       "faces_e_gt_kappa_sigma": n_over, "m_r_sweep": {f"{f} voxel": n for f, n in sweep.items()}, "nearly_none_fraction": NEARLY_NONE,
-                       "chosen_m_r_voxels": chosen, "m_r_m": m_r, "passed": chosen is not None}
-report += ["## 3. Coverage of the confidence faces", "",
-           f"Faces of instances with exactly one Hydra node ({len(single)} instances). Truth = the outermost point of the instance's visual geoms along the face normal. "
-           "A face is **observed** only if (a) this Hydra node has mesh vertices within 1.5 voxels of the true supporting point, and (b) a mapping frame saw the "
-           "face's supporting vertex within 60 deg of the face normal. Unobserved faces get no claim. e = truth - b_hat (positive: the true surface lies outside Hydra's box).", "",
-           f"- kappa = {kap:.2f} (delta = {args.delta} over {n_adm} nodes x 6 faces); single-object kappa = {kap1:.2f}.",
-           f"- Observed faces: {len(records)}. Not observed (no claim): {len(unobserved)}: " + "; ".join(f"{k}: {v}" for k, v in reasons.items()) + ".",
-           f"- e: mean {100 * e.mean():+.2f} cm, std {100 * e.std():.2f} cm, min {100 * e.min():+.2f} cm, max {100 * e.max():+.2f} cm.",
-           f"- sigma: median {1000 * np.median(sig):.2f} mm, 90 % {1000 * np.percentile(sig, 90):.2f} mm, max {1000 * sig.max():.2f} mm; kappa*sigma median {1000 * kap * np.median(sig):.2f} mm.",
-           "- e / sigma quantiles: " + ", ".join(f"{k} {v:+.2f}" for k, v in summary["coverage"]["e_over_sigma_quantiles"].items()) + ".",
-           f"- Faces with e > kappa*sigma: {n_over} of {len(records)}.", "",
-           f"m_r sweep (\"nearly none\" fixed before the run: at most {100 * NEARLY_NONE:.0f} % of the observed faces, i.e. {int(NEARLY_NONE * len(records))}):", "",
-           "| m_r | observed faces with e > kappa*sigma + m_r |", "|---|---|"] + [f"| {f} voxel = {100 * f * voxel:.2f} cm | {n} |" for f, n in sweep.items()] + ["",
-           f"**Chosen m_r: {chosen} voxel = {100 * m_r:.2f} cm.**" if chosen is not None else "**No m_r in the sweep leaves nearly none: the coverage check fails.**", ""]
-over = sorted([r for r in records if r["e_m"] > kap * r["sigma_m"] + m_r], key=lambda r: -(r["e_m"] - kap * r["sigma_m"]))
-if over:
-    report += [f"Every observed face with e > kappa*sigma + m_r (m_r = {100 * m_r:.2f} cm):", "",
-               "| oracle | Hydra | category | face | e [cm] | sigma [mm] | best view [deg] | e - kappa*sigma - m_r [cm] |", "|---|---|---|---|---|---|---|---|"]
-    for r in over:
-        report.append(f"| O:{r['oracle_id']} | H:{r['hydra_id']} | {r['category']} | {FACE[r['face']]} | {100 * r['e_m']:+.2f} | {1000 * r['sigma_m']:.2f} | {r['best_view_angle_deg']} | {100 * (r['e_m'] - kap * r['sigma_m'] - m_r):+.2f} |")
-    report.append("")
-report += ["Faces not observed (no claim):", "", "| Hydra | category | face | own vertex near truth | best view [deg] |", "|---|---|---|---|---|"]
-report += [f"| H:{r['hydra_id']} | {r['category']} | {FACE[r['face']]} | {'yes' if r['own_near_truth'] else 'no'} | {r['best_view_angle_deg'] if r['best_view_angle_deg'] is not None else 'never'} |" for r in unobserved] + [""]
-summary["coverage"]["exceedances"] = over
-summary["coverage"]["unobserved"] = unobserved
-
 route = json.loads((out_dir / "meta.json").read_text())["route"]
 lv = route.get("large_vertical_surfaces", {})
 summary["route"] = {k: (len(v) if isinstance(v, list) else v) for k, v in lv.items()}
@@ -289,56 +217,17 @@ report += ["## Noise model on planar walls", "",
            "predicted vertex std s (eq. 2). With a correct noise model and sigma0^2, r/s ~ N(0, 1): std 1.00, median |r/s| 0.67.", "",
            "| Hydra node | vertices | std(r/s) | median abs(r/s) |", "|---|---|---|---|"] + [f"| H:{h} | {n} | {a:.2f} | {b:.2f} |" for h, n, a, b in wall_rows] + [""]
 
-# ------------------------------------------------------------------ 4. figure
-fig = plt.figure(figsize=(7.16, 3.3), layout="constrained")
-axs = fig.subplot_mosaic([["map", "hist"]], width_ratios=[1.6, 1])
-ax = axs["map"]
-for onode in oracle.nodes.values():
-    ax.add_patch(Polygon(footprint(onode), closed=True, facecolor="#D9D9D9", edgecolor="#9A9A9A", lw=0.4, zorder=1))
-for hnode in hydra.nodes.values():
-    ax.add_patch(Polygon(footprint(hnode), closed=True, fill=False, edgecolor="black", lw=0.5, zorder=3))
-    c, h, _ = confidence_box(hnode.faces, np.asarray(hnode.rotation), kappa_value=kap, m_r=m_r, m_d=args.m_d)
-    ax.add_patch(Polygon(footprint(hnode, half=h, center=c), closed=True, fill=False, edgecolor="#C0392B", lw=0.5, ls=(0, (2.5, 1.5)), zorder=4))
-bp = env.robot_pose()[0]
-ax.plot(bp[0], bp[1], marker="o", ms=4, color="#1F4E9A", zorder=6)
-lo = np.min([n.aabb()[0][:2] for n in oracle.nodes.values()], axis=0) - 0.2
-hi = np.max([n.aabb()[1][:2] for n in oracle.nodes.values()], axis=0) + 0.2
-ax.set_xlim(lo[0], hi[0]); ax.set_ylim(lo[1], hi[1]); ax.set_aspect("equal")
-ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]")
-ax.legend(handles=[Patch(facecolor="#D9D9D9", edgecolor="#9A9A9A", lw=0.4, label="oracle box"), Line2D([], [], color="black", lw=0.6, label="Hydra box"),
-                   Line2D([], [], color="#C0392B", lw=0.6, ls=(0, (2.5, 1.5)), label=r"confidence box ($\kappa\sigma + m_r + m_d$)"),
-                   Line2D([], [], marker="o", ls="", color="#1F4E9A", ms=4, label="robot start")], loc="upper center", bbox_to_anchor=(0.5, -0.13), ncol=2, frameon=False)
-ax.set_title("(a) top view", loc="left")
-ax = axs["hist"]
-all_sigma = np.array([f["sigma"] for n in faces_file["nodes"] for f in n["faces"] if f["observed"] and f["sigma"] is not None])
-ax.hist(100 * kap * all_sigma, bins=np.logspace(-2, 2.2, 43), color="#4D4D4D", lw=0)
-ax.set_xscale("log")
-ax.set_xlabel(r"$\kappa\sigma$ [cm]"); ax.set_ylabel("observed faces")
-ax.set_title(rf"(b) $\kappa\sigma$ over observed faces ($\kappa$ = {kap:.2f})", loc="left")
-fig.savefig(out_dir / "face_sigma.pdf")
-plt.close(fig)
-report += ["## 4. Figure", "", f"`face_sigma.pdf`: (a) top view with oracle boxes (grey), Hydra boxes (black) and confidence boxes (red dashed; kappa = {kap:.2f}, m_r = {100 * m_r:.2f} cm, m_d = {100 * args.m_d:.1f} cm); (b) histogram of kappa*sigma over the {len(all_sigma)} observed faces of all nodes.", ""]
-
 # ------------------------------------------------------------------ 5. category labels
 cat_dir = map_dir(mission["mission"], args.seed, n_map, labels="category")
 
 
-def start_overlaps(graph_nodes):
-    """Boxes (in the base's height band) that the robot's start footprint overlaps."""
-    st = env.robot_state()
-    base = ShapelyPolygon(env.filter.base_vertices_world(st))
-    hits = []
-    for nid, n in graph_nodes.items():
-        lo3, hi3 = n.aabb()
-        if hi3[2] < env.z_band[0] or lo3[2] > env.z_band[1]:
-            continue
-        if base.intersects(ShapelyPolygon(footprint(n))):
-            hits.append((nid, n.category))
-    return hits
+def start_clearance(graph_balls) -> float:
+    """Smallest signed distance between the robot's start footprint and the balls in the base's height band."""
+    return base_clearance(env.rect, env.robot_pose()[0][:2], env.base_yaw(), graph_balls, env.z_band)
 
 
-summary["start_overlap_instance_map"] = start_overlaps(hydra.nodes)
-if (cat_dir / "faces.json").exists():
+summary["start_clearance_instance_map_m"] = start_clearance(balls)
+if (cat_dir / "points.npz").exists():
     from sesame_lite.scene_graph import HydraSceneGraph
 
     bp, R, _ = env.robot_pose()
@@ -369,19 +258,20 @@ if (cat_dir / "faces.json").exists():
             by_oracle.setdefault(o, []).append(h)
     split = {o: hs for o, hs in by_oracle.items() if len(hs) >= 2}
     summary["category_labels"] = {"nodes": len(cat_graph.nodes), "instance_map_nodes": len(hydra.nodes), "merged": merged, "split": split,
-                                  "oracle_instances_merged": sum(len(v) for v in merged.values()), "start_overlap": start_overlaps(cat_graph.nodes)}
+                                  "oracle_instances_merged": sum(len(v) for v in merged.values()),
+                                  "start_clearance_m": start_clearance(cat_graph.balls(n_admitted=len(cat_graph.nodes), delta=policy.delta, m_d=policy.m_d))}
     report += ["## 5. Category labels instead of instance labels (same scene, no episode)", "",
                f"- Nodes: {len(cat_graph.nodes)} with category labels vs {len(hydra.nodes)} with instance labels (oracle: {len(oracle.nodes)}).",
                f"- Category nodes covering two or more oracle instances (merged): {len(merged)}, covering {summary['category_labels']['oracle_instances_merged']} instances: "
                + ("; ".join(f"H:{h} ({cat_graph.nodes[h].category}, {' x '.join(f'{100 * v:.0f}' for v in world_dims(cat_graph.nodes[h]))} cm) <- " + ", ".join(f"O:{o}" for o in m) for h, m in merged.items()) or "none") + ".",
                f"- Oracle instances split over two or more category nodes: {len(split)}" + (": " + "; ".join(f"O:{o} -> " + ", ".join(f"H:{h}" for h in hs) for o, hs in split.items()) if split else "") + ".",
-               "- Robot start footprint overlaps a box in the base's height band: category map " + (", ".join(f"H:{h} ({c})" for h, c in summary["category_labels"]["start_overlap"]) or "none")
-               + "; instance map " + (", ".join(f"H:{h} ({c})" for h, c in summary["start_overlap_instance_map"]) or "none") + ".", ""]
+               f"- Clearance of the robot's start footprint from the balls in the base's height band: category map {100 * summary['category_labels']['start_clearance_m']:+.1f} cm, "
+               f"instance map {100 * summary['start_clearance_instance_map_m']:+.1f} cm.", ""]
 else:
     report += ["## 5. Category labels", "", "Not built (run map_scene.py --labels category).", ""]
 
 (out_dir / "check.md").write_text("\n".join(report))
-(out_dir / "check.json").write_text(json.dumps({"summary": summary, "match_rows": rows, "obb": obb_rows}, indent=1, default=float))
+(out_dir / "check.json").write_text(json.dumps({"summary": summary, "points": point_rows, "match_rows": rows, "obb": obb_rows}, indent=1, default=float))
 print("\n".join(report[:12]))
-print("CHECK " + json.dumps({k: v for k, v in summary.items() if k != "coverage"} | {"coverage": {k: v for k, v in summary["coverage"].items() if k != "exceedances"}}, default=float)[:3000])
+print("CHECK " + json.dumps(summary, default=float)[:3000])
 base.close()

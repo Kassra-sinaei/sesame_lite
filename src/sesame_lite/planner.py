@@ -19,7 +19,6 @@ from typing import Sequence
 import numpy as np
 
 from sesame_lite.agents.pruning_classifier import PruningCandidate, PruningCandidateClassifier, PruningClassification
-from sesame_lite.geometry.box_geometry import symmetric_polygon_separation_barrier
 from sesame_lite.geometry.swept_volume import (
     BETA_DEVIATION_BUDGET_M,
     DEFAULT_SAMPLE_SPACING_M,
@@ -97,33 +96,50 @@ class PruningBundle:
 # --------------------------------------------------------------------------- base geometry helpers
 
 
-def base_clearance(rect_xy: np.ndarray, pose_xy, yaw: float, graph: SceneGraph, z_band: tuple[float, float], exempt: Sequence[str] = ()) -> float:
-    """Smallest signed separation between the base rectangle at (pose, yaw) and every box in the z band."""
-    R = np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
-    verts = np.asarray(pose_xy)[None, :] + rect_xy @ R.T
-    jac = [np.zeros((2, 3))] * 4
-    best = math.inf
-    for node in graph.obstacle_nodes():
-        lo, hi = node.aabb()
-        if node.node_id in exempt or hi[2] < z_band[0] or lo[2] > z_band[1]:
+class NoPathError(RuntimeError):
+    """The grid planner found no path between start and goal through the balls (the mission stops; no fallback)."""
+
+
+def band_points(balls: dict, z_band: tuple[float, float], exempt: Sequence[str] = ()) -> tuple[np.ndarray, np.ndarray]:
+    """The balls (centre x-y, radius) of every non-exempt object that reach into the base's height band."""
+    xy, rho = [np.zeros((0, 2))], [np.zeros(0)]
+    for nid, b in balls.items():
+        if nid in exempt:
             continue
-        sample, _ = symmetric_polygon_separation_barrier(verts, jac, node.fragment(), policy_margin=0.0, smoothing_gain=1e4, protected_id="base")
-        best = min(best, sample.value)
-    return best
+        keep = (b.points[:, 2] - b.rho <= z_band[1]) & (b.points[:, 2] + b.rho >= z_band[0])
+        xy.append(b.points[keep, :2])
+        rho.append(b.rho[keep])
+    return np.vstack(xy), np.concatenate(rho)
 
 
-def standoff_goal(graph: SceneGraph, rect_xy: np.ndarray, goal_xy, goal_yaw: float, away_from_xy, *, z_band, clearance_m: float, max_offset_m: float = 0.6, step_m: float = 0.02, exempt: Sequence[str] = ()) -> tuple[np.ndarray, float]:
-    """Move the goal away from the fixture along the outward direction until the base clears every box by ``clearance_m``."""
+def base_clearance(rect_xy: np.ndarray, pose_xy, yaw: float, balls: dict, z_band: tuple[float, float], exempt: Sequence[str] = ()) -> float:
+    """Smallest signed separation between the base rectangle at (pose, yaw) and the balls in the base's height band
+    (the same points and radii as the filter; spec v4, section 9)."""
+    xy, rho = band_points(balls, z_band, exempt)
+    if len(xy) == 0:
+        return math.inf
+    R = np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
+    q = (xy - np.asarray(pose_xy)) @ R  # base frame
+    lo, hi = rect_xy.min(axis=0), rect_xy.max(axis=0)
+    outside = np.maximum(np.maximum(lo - q, q - hi), 0.0)
+    dist = np.where(np.any(outside > 0, axis=1), np.linalg.norm(outside, axis=1), -np.min(np.minimum(q - lo, hi - q), axis=1))
+    return float(np.min(dist - rho))
+
+
+def standoff_goal(balls: dict, rect_xy: np.ndarray, goal_xy, goal_yaw: float, away_from_xy, *, z_band, clearance_m: float, max_offset_m: float = 0.6, step_m: float = 0.02, exempt: Sequence[str] = ()) -> tuple[np.ndarray, float | None]:
+    """Move the goal away from the fixture along the outward direction until the base clears every ball by
+    ``clearance_m``. If no offset up to ``max_offset_m`` works, RoboCasa's goal is kept and the offset is None
+    (recorded in the segment)."""
     goal_xy, away = np.asarray(goal_xy, dtype=float), np.asarray(away_from_xy, dtype=float)
     d = goal_xy - away
     n = np.linalg.norm(d)
     direction = d / n if n > 1e-6 else np.array([-np.cos(goal_yaw), -np.sin(goal_yaw)])
     s = 0.0
     while s <= max_offset_m:
-        if base_clearance(rect_xy, goal_xy + s * direction, goal_yaw, graph, z_band, exempt) >= clearance_m:
+        if base_clearance(rect_xy, goal_xy + s * direction, goal_yaw, balls, z_band, exempt) >= clearance_m:
             return goal_xy + s * direction, s
         s += step_m
-    return goal_xy, 0.0  # nothing works: keep RoboCasa's goal and let the episode report the stall
+    return goal_xy, None
 
 
 # --------------------------------------------------------------------------- grid path planning
@@ -134,21 +150,24 @@ def _floor_bounds(graph: SceneGraph, margin: float = 0.5) -> tuple[np.ndarray, n
     return pts[:, :2].min(axis=0) - margin, pts[:, :2].max(axis=0) + margin
 
 
-def plan_base_path(graph: SceneGraph, start_xy, goal_xy, *, inflation_m: float, z_band=(0.0, 0.45), resolution_m: float = 0.05) -> np.ndarray:
-    """8-connected A* on an occupancy grid of the boxes intersecting the base z band, inflated by ``inflation_m``.
+def plan_base_path(graph: SceneGraph, balls: dict, start_xy, goal_xy, *, inflation_m: float, z_band=(0.0, 0.45), resolution_m: float = 0.05) -> np.ndarray:
+    """8-connected A* on an occupancy grid: a cell is occupied if it lies within rho_m + ``inflation_m`` of the centre
+    of a ball in the base's height band (the same balls as the filter).
 
     Cells within one inflation radius of the start and goal are cleared (both poses touch furniture by
-    construction). Falls back to the straight segment if no path exists.
+    construction). Raises NoPathError if no path exists.
     """
+    from scipy.spatial import cKDTree
+
     lo, hi = _floor_bounds(graph)
     nx, ny = (np.ceil((hi - lo) / resolution_m).astype(int) + 1).tolist()
-    occ = np.zeros((nx, ny), dtype=bool)
     X, Y = np.meshgrid(lo[0] + resolution_m * np.arange(nx), lo[1] + resolution_m * np.arange(ny), indexing="ij")
-    for node in graph.obstacle_nodes():
-        b_lo, b_hi = node.aabb()
-        if b_hi[2] < z_band[0] or b_lo[2] > z_band[1]:
-            continue
-        occ |= (X >= b_lo[0] - inflation_m) & (X <= b_hi[0] + inflation_m) & (Y >= b_lo[1] - inflation_m) & (Y <= b_hi[1] + inflation_m)
+    occ = np.zeros(nx * ny, dtype=bool)
+    xy, rho = band_points(balls, z_band)
+    if len(xy):
+        hits = cKDTree(np.c_[X.ravel(), Y.ravel()]).query_ball_point(xy, r=rho + inflation_m)
+        occ[np.concatenate([np.asarray(h, dtype=np.int64) for h in hits])] = True
+    occ = occ.reshape(nx, ny)
     start, goal = np.asarray(start_xy, dtype=float), np.asarray(goal_xy, dtype=float)
     for p in (start, goal):
         occ &= ~((X - p[0]) ** 2 + (Y - p[1]) ** 2 <= (inflation_m + resolution_m) ** 2)
@@ -176,7 +195,7 @@ def plan_base_path(graph: SceneGraph, start_xy, goal_xy, *, inflation_m: float, 
                 best[nxt], came[nxt] = c, cur
                 heapq.heappush(heap, (c + math.dist(nxt, g), c, nxt))
     if not found:
-        return np.vstack([start, goal])
+        raise NoPathError(f"no base path from {np.round(start, 2)} to {np.round(goal, 2)} through the balls (inflation {inflation_m:.2f} m)")
     cells = [g]
     while cells[-1] != s:
         cells.append(came[cells[-1]])
@@ -234,8 +253,9 @@ def exempt_nodes(entries: list[dict], roles: dict[str, str | None], lookup: Orac
     return tuple(dict.fromkeys(out))  # unique, in order
 
 
-def resolve_plan(plan: dict, rs_env, graph: SceneGraph, lookup: OracleLookup, *, language: str, base_xy, rect_xy: np.ndarray, z_band, clearance_m: float, inflation_m: float) -> list[Segment]:
-    """Turn a JSON plan into segments for this episode (roles -> node ids, standoff goals, paths)."""
+def resolve_plan(plan: dict, rs_env, graph: SceneGraph, lookup: OracleLookup, *, balls: dict, language: str, base_xy, rect_xy: np.ndarray, z_band, clearance_m: float, inflation_m: float) -> list[Segment]:
+    """Turn a JSON plan into segments for this episode (roles -> node ids, standoff goals, paths). Obstacles are the
+    objects' confidence balls (``balls``: node id -> Balls), the same as the filter's."""
     roles = {name: resolve_role(spec, rs_env, lookup) for name, spec in plan.get("roles", {}).items()}
     oracle_name = {nid: name for name, nid in lookup.node_of.items()}
     segments = []
@@ -257,8 +277,8 @@ def resolve_plan(plan: dict, rs_env, graph: SceneGraph, lookup: OracleLookup, *,
                 goal_xy, goal_yaw = np.asarray(pos)[:2], float(np.asarray(ori)[2])
             offset = 0.0
             if g.get("standoff", True) and nid is not None:
-                goal_xy, offset = standoff_goal(graph, rect_xy, goal_xy, goal_yaw, np.asarray(graph.nodes[nid].center[:2]), z_band=z_band, clearance_m=clearance_m, exempt=exempt)
-            path = plan_base_path(graph, cur_xy, goal_xy, inflation_m=inflation_m, z_band=z_band)
+                goal_xy, offset = standoff_goal(balls, rect_xy, goal_xy, goal_yaw, np.asarray(graph.nodes[nid].center[:2]), z_band=z_band, clearance_m=clearance_m, exempt=exempt)
+            path = plan_base_path(graph, balls, cur_xy, goal_xy, inflation_m=inflation_m, z_band=z_band)
             segments.append(Segment(kind=NAVIGATION, goal_text=goal_text, path_polyline_xy=path, goal_yaw=goal_yaw, goal_offset_m=offset, exempt_ids=exempt, done=s.get("done", {"check": "base_near_goal", "radius": 0.2}), max_steps=s.get("max_steps"), index=i))
             cur_xy = goal_xy
         else:
@@ -284,8 +304,13 @@ def default_plan(rs_env) -> dict:
 # --------------------------------------------------------------------------- two-stage pruning
 
 
-def build_bundle(segment: Segment, graph: SceneGraph, *, classifier: PruningCandidateClassifier | None, base_circumscribed_radius_m: float, policy_margin_m: float, eef_reach_m: float) -> PruningBundle:
-    aabbs = graph.aabb_by_id()
+def ball_aabbs(balls: dict) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Axis-aligned bounds of each object's balls (pruning uses the same obstacles as the filter)."""
+    return {nid: ((b.points - b.rho[:, None]).min(axis=0), (b.points + b.rho[:, None]).max(axis=0)) for nid, b in balls.items()}
+
+
+def build_bundle(segment: Segment, graph: SceneGraph, *, balls: dict, classifier: PruningCandidateClassifier | None, base_circumscribed_radius_m: float, policy_margin_m: float, eef_reach_m: float) -> PruningBundle:
+    aabbs = ball_aabbs(balls)
     nodes = {n.node_id: n for n in graph.obstacle_nodes()}
     corridor_r = region_r = None
     if segment.kind == NAVIGATION:

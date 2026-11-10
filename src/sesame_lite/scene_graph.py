@@ -19,14 +19,13 @@ Two things come out of a capture:
 - ``OracleLookup``: which node is which RoboCasa fixture/object and which MuJoCo bodies belong to it. Only the
   evaluation side uses it (contact checks, ground truth, the hand-written reference plans); no model ever sees it.
 
-``HydraSceneGraph`` reads the graph Hydra itself built from the mapping pass (``sesame_lite.mapping``): oriented boxes
-with per-face standard deviations. ``IdBridge`` is the one crossing point between its node ids and the oracle's.
+``HydraSceneGraph`` reads the graph Hydra itself built from the mapping pass (``sesame_lite.mapping``): per object its
+mesh vertices with their standard deviation (the obstacle the filter uses) and an oriented box (no safety claim). ``IdBridge`` is the one crossing point between its node ids and the oracle's.
 """
 
 from __future__ import annotations
 
-import copy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
@@ -39,6 +38,7 @@ import spark_dsg as dsg
 import yaml
 
 from sesame_lite.geometry.fragments import OrientedBoxFragment
+from sesame_lite.uncertainty import Balls, balls
 
 LABEL_SPACE_FILE = Path(__file__).resolve().parents[2] / "config" / "robocasa_label_space.yaml"
 PLACE_SPACING_M = 0.5
@@ -93,17 +93,6 @@ class LabelSpace:
 
 
 @dataclass(frozen=True)
-class Face:
-    """One face of a node's box as a half-space a . x <= offset (spec 4.6)."""
-
-    normal: tuple  # a_k, unit, world: +-R[:,0], +-R[:,1], +-R[:,2]
-    offset: float  # b_hat_k = max over the node's mesh vertices of a_k . p
-    sigma: float  # std of the offset
-    support_vertex: tuple  # the vertex that attains the max
-    observed: bool  # evaluation only (true supporting point near an observed voxel); the filter never reads it
-
-
-@dataclass(frozen=True)
 class SceneObject:
     """One OBJECTS-layer node as the rest of the code sees it."""
 
@@ -114,17 +103,17 @@ class SceneObject:
     half_extents: tuple[float, float, float]
     kind: str = "object"  # Hydra has no fixture/object split; kept for the classifier's request format
     rotation: tuple | None = None  # world_R_box (3x3, row-major tuples); None = axis-aligned (the oracle)
-    faces: tuple[Face, ...] = ()  # Hydra nodes: the six faces with their std
     label_confidence: float | None = None  # hook for a label-confidence gate (not used yet)
-    confidence: dict | None = None  # the confidence box (SceneGraph.with_confidence): center, half_extents, kappa_sigma, inflation
+    points: np.ndarray | None = field(default=None, compare=False, repr=False)  # Hydra nodes: mesh vertices [n, 3]
+    std: np.ndarray | None = field(default=None, compare=False, repr=False)  # and their std s_m [n] (eq. 2)
 
     @property
     def extent(self) -> tuple[float, float, float]:
         return tuple(2.0 * h for h in self.half_extents)
 
     def aabb(self) -> tuple[np.ndarray, np.ndarray]:
-        """Axis-aligned bounds of the box the filter enforces (the confidence box once it is set)."""
-        if self.rotation is None and self.confidence is None:
+        """Axis-aligned bounds of the node's box (Hydra's box carries no safety claim; the filter uses the points)."""
+        if self.rotation is None:
             c, h = np.asarray(self.center), np.asarray(self.half_extents)
             return c - h, c + h
         lo, hi = self.fragment().aabb(3)
@@ -135,10 +124,8 @@ class SceneObject:
         return f"{self.category} (approx {x:.2f} x {y:.2f} x {z:.2f} m box)"
 
     def fragment(self) -> OrientedBoxFragment:
-        """The box the filter enforces as one barrier fragment (fragment id = node id): the confidence box once it is
-        set, else the estimated box. ``center`` / ``half_extents`` stay the estimated box (what the planner shows)."""
-        c, h = (self.confidence["center"], self.confidence["half_extents"]) if self.confidence else (self.center, self.half_extents)
-        return OrientedBoxFragment(parent_stable_id=self.node_id, fragment_id=self.node_id, center=tuple(c), orientation_xyzw=self.orientation_xyzw, half_extents=tuple(h))
+        """The node's box as an oriented box (fragment id = node id): the oracle's boxes for the exact evaluation."""
+        return OrientedBoxFragment(parent_stable_id=self.node_id, fragment_id=self.node_id, center=tuple(self.center), orientation_xyzw=self.orientation_xyzw, half_extents=tuple(self.half_extents))
 
     @property
     def orientation_xyzw(self) -> tuple[float, float, float, float]:
@@ -153,15 +140,14 @@ class SceneObject:
              "center": [round(v, ROUND) for v in self.center], "half_extents": [round(v, ROUND) for v in self.half_extents]}
         if self.rotation is not None:
             d["rotation"] = [[round(v, 6) for v in row] for row in self.rotation]
-        if self.faces:
-            d["faces"] = [{"normal": [round(v, 6) for v in f.normal], "offset": round(f.offset, 5), "sigma": round(f.sigma, 6)} for f in self.faces]
+        if self.points is not None:
+            d["n_points"] = int(len(self.points))
         return d
 
 
 class SceneGraph:
     """Reader over a Hydra DynamicSceneGraph: objects, places, rooms and the robot pose."""
 
-    voxel_size_m = 0.0  # map resolution behind the boxes (the oracle has none: no discretisation margin m_r)
     label = "oracle"
 
     def __init__(self, graph: dsg.DynamicSceneGraph, labels: LabelSpace, *, robot_pose: tuple[np.ndarray, float] | None = None):
@@ -202,34 +188,6 @@ class SceneGraph:
 
     def fragments(self) -> dict[str, OrientedBoxFragment]:
         return {nid: n.fragment() for nid, n in self.nodes.items()}
-
-    def with_confidence(self, *, kappa: float, m_d: float, m_r_voxels: float = 0.25) -> "SceneGraph":
-        """A copy whose boxes are the confidence boxes (spec 5.1): every face pushed out by kappa*sigma + m_r + m_d,
-        m_r = m_r_voxels * voxel_size. A node without faces (the oracle) has sigma = 0 and m_r = 0: only m_d is added."""
-        from sesame_lite.uncertainty import box_axes, box_from_offsets
-
-        m_r = self.voxel_size_m * m_r_voxels
-        out = copy.copy(self)
-        out.nodes = {}
-        for nid, n in self.nodes.items():
-            R = np.asarray(n.rotation if n.rotation is not None else np.eye(3), dtype=float)
-            A = box_axes(R)
-            if n.faces:
-                b_hat = np.array([f.offset for f in n.faces])
-                ks = kappa * np.array([f.sigma for f in n.faces])
-                mr = m_r
-            else:
-                c, h = np.asarray(n.center), np.asarray(n.half_extents)
-                b_hat = A @ c + np.repeat(h, 2)
-                ks, mr = np.zeros(6), 0.0
-            inflation = ks + mr + m_d
-            center, half = box_from_offsets(A, b_hat + inflation, R)
-            out.nodes[nid] = replace(n, confidence={"center": tuple(float(v) for v in center), "half_extents": tuple(float(max(v, MINIMUM_HALF_EXTENT_M)) for v in half),
-                                                    "kappa_sigma": tuple(float(v) for v in ks), "inflation": tuple(float(v) for v in inflation), "kappa": kappa, "m_r": mr, "m_d": m_d})
-        return out
-
-    def confidence_as_dict(self) -> dict:
-        return {nid: {k: (list(v) if isinstance(v, tuple) else v) for k, v in n.confidence.items()} for nid, n in self.nodes.items() if n.confidence}
 
     def fragment_ids_of(self, node_ids: Iterable[str], *, exempt: Iterable[str] = ()) -> tuple[str, ...]:
         """Fragment ids (= node ids) of the given nodes, without the exempt ones."""
@@ -282,43 +240,51 @@ class HydraSceneGraph(SceneGraph):
     """Reader over the graph Hydra built in the mapping pass (outputs/maps/<mission>_s<seed>_<n>/).
 
     Labels are instance labels (the panoptic stand-in); ``label`` and ``category`` are the instance's category,
-    through the instance -> category table of the map, so no instance or RoboCasa name reaches a model. Boxes are
-    Hydra's oriented boxes; each node carries its six faces with their std (faces.json). Places and rooms are
-    Hydra's own (there may be no room, and an object may have no parent place). The robot pose comes from the
-    simulator at capture time: Hydra's agent layer holds the mapping camera's poses.
+    through the instance -> category table of the map, so no instance or RoboCasa name reaches a model. Each node
+    carries its mesh vertices and their std (points.npz); its oriented box is kept for node matching and to skip far
+    objects, and carries no safety claim. Places and rooms are Hydra's own (there may be no room, and an object may
+    have no parent place). The robot pose comes from the simulator at capture time: Hydra's agent layer holds the
+    mapping camera's poses.
     """
+
+    label = "Hydra"
 
     def __init__(self, map_dir: str | Path, labels: LabelSpace, *, robot_pose: tuple[np.ndarray, float]):
         map_dir = Path(map_dir)
         self.map_dir = map_dir
         self.meta = json.loads((map_dir / "meta.json").read_text())
         self.category_of_label = {int(k): int(v) for k, v in self.meta["category_of_label"].items()}
-        self.voxel_size_m = float(self.meta["params"]["voxel_size_m"])
-        self.label = "Hydra"
-        self._faces = {n["node_id"]: n for n in json.loads((map_dir / "faces.json").read_text())["nodes"]}
+        pts = np.load(map_dir / "points.npz")
+        self.voxel_size_m, self.m_r, self.e_max = float(pts["voxel_size"]), float(pts["m_r"]), float(pts["e_max"])
+        off = pts["offsets"]
+        self._points = {str(nid): (pts["points"][off[k]:off[k + 1]], pts["std"][off[k]:off[k + 1]]) for k, nid in enumerate(pts["node_ids"])}
+        self.nodes_without_points: list[str] = []
         super().__init__(dsg.DynamicSceneGraph.load(str(map_dir / "dsg.json")), labels, robot_pose=robot_pose)
 
     def _read_object(self, node) -> SceneObject | None:
         node_id = str(node.id)
-        record = self._faces.get(node_id)
-        if record is None:  # a node without mesh vertices has no faces: nothing to protect or show
+        points, std = self._points.get(node_id, (np.zeros((0, 3)), np.zeros(0)))
+        if len(points) == 0:  # no mesh vertex with a std: nothing to protect or show
+            self.nodes_without_points.append(node_id)
             return None
         bb = node.attributes.bounding_box
         category = self.category_of_label.get(int(node.attributes.semantic_label), 0)
-        faces = tuple(Face(normal=tuple(f["normal"]), offset=float(f["offset"]), sigma=float(f["sigma"]) if f["sigma"] is not None else float("nan"),
-                           support_vertex=tuple(f["support_vertex"]), observed=bool(f["observed"])) for f in record["faces"])
         R = np.asarray(bb.world_R_center, dtype=float)
         return SceneObject(
             node_id=node_id, label=category, category=self.labels.names.get(category, "unknown"),
             center=tuple(float(v) for v in bb.world_P_center), half_extents=tuple(float(max(v / 2, MINIMUM_HALF_EXTENT_M)) for v in bb.dimensions),
-            rotation=tuple(tuple(float(v) for v in row) for row in R), faces=faces)
+            rotation=tuple(tuple(float(v) for v in row) for row in R), points=points, std=std)
+
+    def balls(self, *, n_admitted: int, delta: float, m_d: float) -> dict[str, Balls]:
+        """Every node's confidence balls (eq. 4) for delta split over n_admitted objects."""
+        return {nid: balls(n.points, n.std, delta_j=delta / max(n_admitted, 1), voxel_size=self.voxel_size_m, m_r=self.m_r, m_d=m_d) for nid, n in self.nodes.items()}
 
     def instance_of(self, node_id: str) -> int:
         """The node's instance label (evaluation side: the bridge to the oracle)."""
         return int(self.dsg_node(node_id).attributes.semantic_label)
 
     def n_vertices(self, node_id: str) -> int:
-        return int(self._faces[node_id]["n_vertices"])
+        return int(len(self.nodes[node_id].points))
 
 
 @dataclass
@@ -582,25 +548,3 @@ def capture_scene_graph(rs_env, labels: LabelSpace | None = None) -> tuple[Scene
         value = getattr(rs_env, key, None)
         lookup.meta[key] = int(value) if isinstance(value, (int, np.integer)) else "custom"
     return SceneGraph(graph, labels), lookup
-
-
-def perturb(graph: SceneGraph, rng: np.random.Generator, *, face_std_m: float, voxel_size_m: float = 0.05) -> SceneGraph:
-    """Fallback of spec section 7 (synthetic face noise, not Hydra): a copy of the graph whose box faces are drawn
-    from a Gaussian around the true faces, b_hat_k ~ N(b_k, face_std_m^2), with that std attached as the face sigma.
-    The estimated box is the box of the drawn faces. ``voxel_size_m`` is the resolution the copy stands in for (it
-    sets m_r = voxel / 4 of the confidence boxes)."""
-    from sesame_lite.uncertainty import box_axes, box_from_offsets
-
-    noisy = copy.copy(graph)
-    noisy.nodes = {}
-    noisy.voxel_size_m = voxel_size_m
-    noisy.label = "synthetic face noise, not Hydra"
-    A = box_axes(np.eye(3))
-    for nid in sorted(graph.nodes, key=lambda k: _parse_symbol(k)[1]):  # fixed draw order
-        n = graph.nodes[nid]
-        c, h = np.asarray(n.center), np.asarray(n.half_extents)
-        b_hat = A @ c + np.repeat(h, 2) + rng.normal(0.0, face_std_m, 6)
-        center, half = box_from_offsets(A, b_hat, np.eye(3))
-        faces = tuple(Face(normal=tuple(A[k]), offset=float(b_hat[k]), sigma=float(face_std_m), support_vertex=(float("nan"),) * 3, observed=True) for k in range(6))
-        noisy.nodes[nid] = replace(n, center=tuple(float(v) for v in center), half_extents=tuple(float(max(v, MINIMUM_HALF_EXTENT_M)) for v in half), rotation=None, faces=faces)
-    return noisy

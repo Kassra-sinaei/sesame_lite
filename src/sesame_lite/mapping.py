@@ -4,12 +4,12 @@ in it. The output is cached per scene in outputs/maps/<mission>_s<seed>_<n>/:
 
     dsg.json        Hydra's scene graph with its mesh (spark_dsg file format)
     voxels.npz      every observed TSDF voxel near a surface (index, distance, weight), from the TsdfSink plugin
-    faces.json      per object node: category, box and the six faces (offset, sigma, observed), see scene_graph.py
+    points.npz      per object node: its mesh vertices with their std, e_max and m_r (uncertainty.write_points)
     meta.json       oracle snapshot id, instance -> category table, parameters, timing and counts
 
-Simulator ground truth is used here only to render the camera images (depth, segmentation, colour), for the camera
-route (free points of the oracle graph's place grid: the operator's route, not map content) and, in faces.json, for
-the evaluation-only ``observed`` flag. Hydra sees images and camera poses only.
+Simulator ground truth is used here only to render the camera images (depth, segmentation, colour) and for the camera
+route (free points of the oracle graph's place grid: the operator's route, not map content). Hydra sees images and
+camera poses only.
 
 Labels stand in for a panoptic segmenter: one label per fixture or object instance (oracle node O(k) -> instance
 k + 1), the floor is a surface label, robot and unknown geoms are label 0 (invalid: Hydra skips those pixels).
@@ -57,7 +57,6 @@ class MappingParams:
     route_min_clearance_m: float = 0.3
     large_surface_m2: float = 0.5  # vertical box faces at least this large get a view within route_view_angle_deg
     route_view_angle_deg: float = 45.0  # the route adds views until every large vertical surface is seen this frontally
-    observed_view_angle_deg: float = 60.0  # a face never seen within this angle of its normal is not observed
     frame_dt_s: float = 0.1  # timestamp spacing between frames
     full_update_separation_s: float = 1.0  # Hydra extracts mesh and objects at most this often (timestamp time)
     labels: str = "instance"  # "instance" (default) or "category" (the check of 4.8 item 5)
@@ -446,7 +445,7 @@ def map_dir(mission: str, seed: int, n: int, labels: str = "instance") -> Path:
 
 def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: Path, *, seed: int, params: MappingParams = MappingParams()) -> Path:
     """Mapping pass over the current kitchen state; writes the cache directory (see the module docstring)."""
-    from sesame_lite.uncertainty import write_faces
+    from sesame_lite.uncertainty import write_points
 
     out_dir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
@@ -482,5 +481,5 @@ def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: P
         "seconds": round(t_map, 1),
     }
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=1))
-    write_faces(out_dir, rs_env, oracle_graph, lookup, views=views, params=params)
+    write_points(out_dir, views=views, params=params)
     return out_dir

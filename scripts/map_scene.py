@@ -3,7 +3,7 @@
     MUJOCO_GL=egl .venv/bin/python -s scripts/map_scene.py --plan plans/nav_clutter.json --seed 100
 
 Writes outputs/maps/<mission>_s<seed>_<n>/ (n = 0 at reset, 1 after the injections) unless the cache exists.
-``plan_mission.py`` and ``run_episode*.py`` with ``--graph-source hydra`` then load the same maps, so node ids agree
+``run_episode*.py`` then loads the same maps, so node ids agree
 between planning and execution. ``--labels category`` writes a second map with category labels instead of instance
 labels (the check of spec 4.8 item 5, no episode with it) to outputs/maps/<mission>_s<seed>_<n>_category/.
 """
@@ -30,7 +30,7 @@ args = ap.parse_args()
 
 mission = load_plan(args.plan)
 base = SesameRoboCasaEnv(mission["task"], env_kwargs=dict(mission.get("env_kwargs", {})), episode_length=mission.get("horizon"))
-env = SafetyFilterEnv(base, filter=False, graph_source="hydra")
+env = SafetyFilterEnv(base, filter=False)
 env.reset(seed=args.seed, plan=mission)  # builds the instance-label maps (or loads them and checks the scene)
 if args.labels == "category":  # the same kitchen state as the last instance map, mapped again with category labels
     out = map_dir(mission["mission"], args.seed, env.n_capture - 1, labels="category")
