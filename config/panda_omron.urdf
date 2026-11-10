@@ -1,0 +1,305 @@
+<robot name="panda_omron">
+  <link name="robot0_base" />
+  <link name="mobilebase0_base" />
+  <link name="mobilebase0_fixed_support" />
+  <link name="mobilebase0_support" />
+  <link name="manipulator_mount" />
+  <link name="robot0_link0" />
+  <link name="robot0_link1" />
+  <link name="robot0_link2" />
+  <link name="robot0_link3" />
+  <link name="robot0_link4" />
+  <link name="robot0_link5" />
+  <link name="robot0_link6" />
+  <link name="robot0_link7" />
+  <link name="robot0_right_hand" />
+  <link name="gripper0_right_right_gripper" />
+  <link name="gripper0_right_eef" />
+  <link name="gripper0_right_leftfinger" />
+  <link name="gripper0_right_finger_joint1_tip" />
+  <link name="gripper0_right_rightfinger" />
+  <link name="gripper0_right_finger_joint2_tip" />
+  <link name="mobilebase0_wheeled_base" />
+  <link name="mobilebase0_joint_mobile_forward_pivot" />
+  <joint name="mobilebase0_joint_mobile_forward_anchor" type="fixed">
+    <parent link="robot0_base" />
+    <child link="mobilebase0_joint_mobile_forward_pivot" />
+    <origin xyz="-0.210000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="mobilebase0_joint_mobile_forward_link" />
+  <joint name="mobilebase0_joint_mobile_forward" type="prismatic">
+    <parent link="mobilebase0_joint_mobile_forward_pivot" />
+    <child link="mobilebase0_joint_mobile_forward_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="1.000000 0.000000 0.000000" />
+    <limit lower="-100.000000" upper="100.000000" effort="1000" velocity="10" />
+  </joint>
+  <link name="mobilebase0_joint_mobile_side_pivot" />
+  <joint name="mobilebase0_joint_mobile_side_anchor" type="fixed">
+    <parent link="mobilebase0_joint_mobile_forward_link" />
+    <child link="mobilebase0_joint_mobile_side_pivot" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="mobilebase0_joint_mobile_side_link" />
+  <joint name="mobilebase0_joint_mobile_side" type="prismatic">
+    <parent link="mobilebase0_joint_mobile_side_pivot" />
+    <child link="mobilebase0_joint_mobile_side_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 1.000000 0.000000" />
+    <limit lower="-100.000000" upper="100.000000" effort="1000" velocity="10" />
+  </joint>
+  <link name="mobilebase0_joint_mobile_yaw_pivot" />
+  <joint name="mobilebase0_joint_mobile_yaw_anchor" type="fixed">
+    <parent link="mobilebase0_joint_mobile_side_link" />
+    <child link="mobilebase0_joint_mobile_yaw_pivot" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="mobilebase0_joint_mobile_yaw_link" />
+  <joint name="mobilebase0_joint_mobile_yaw" type="revolute">
+    <parent link="mobilebase0_joint_mobile_yaw_pivot" />
+    <child link="mobilebase0_joint_mobile_yaw_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 0.000000 1.000000" />
+    <limit lower="-100.000000" upper="100.000000" effort="1000" velocity="10" />
+  </joint>
+  <joint name="mobilebase0_base_from_mobilebase0_joint_mobile_yaw" type="fixed">
+    <parent link="mobilebase0_joint_mobile_yaw_link" />
+    <child link="mobilebase0_base" />
+    <origin xyz="0.210000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <joint name="mobilebase0_fixed_support_fixed" type="fixed">
+    <parent link="mobilebase0_base" />
+    <child link="mobilebase0_fixed_support" />
+    <origin xyz="-0.050000 0.000000 0.500000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="mobilebase0_joint_torso_height_pivot" />
+  <joint name="mobilebase0_joint_torso_height_anchor" type="fixed">
+    <parent link="mobilebase0_fixed_support" />
+    <child link="mobilebase0_joint_torso_height_pivot" />
+    <origin xyz="0.050000 0.000000 0.200000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="mobilebase0_joint_torso_height_link" />
+  <joint name="mobilebase0_joint_torso_height" type="prismatic">
+    <parent link="mobilebase0_joint_torso_height_pivot" />
+    <child link="mobilebase0_joint_torso_height_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 0.000000 1.000000" />
+    <limit lower="0.000000" upper="0.340000" effort="1000" velocity="10" />
+  </joint>
+  <joint name="mobilebase0_support_from_mobilebase0_joint_torso_height" type="fixed">
+    <parent link="mobilebase0_joint_torso_height_link" />
+    <child link="mobilebase0_support" />
+    <origin xyz="-0.000000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <joint name="manipulator_mount_fixed" type="fixed">
+    <parent link="mobilebase0_support" />
+    <child link="manipulator_mount" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <joint name="robot0_link0_fixed" type="fixed">
+    <parent link="manipulator_mount" />
+    <child link="robot0_link0" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint1_pivot" />
+  <joint name="robot0_joint1_anchor" type="fixed">
+    <parent link="robot0_link0" />
+    <child link="robot0_joint1_pivot" />
+    <origin xyz="0.000000 0.000000 0.333000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint1_link" />
+  <joint name="robot0_joint1" type="revolute">
+    <parent link="robot0_joint1_pivot" />
+    <child link="robot0_joint1_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 0.000000 1.000000" />
+    <limit lower="-2.897300" upper="2.897300" effort="1000" velocity="10" />
+  </joint>
+  <joint name="robot0_link1_from_robot0_joint1" type="fixed">
+    <parent link="robot0_joint1_link" />
+    <child link="robot0_link1" />
+    <origin xyz="-0.000000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint2_pivot" />
+  <joint name="robot0_joint2_anchor" type="fixed">
+    <parent link="robot0_link1" />
+    <child link="robot0_joint2_pivot" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="-1.570796 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint2_link" />
+  <joint name="robot0_joint2" type="revolute">
+    <parent link="robot0_joint2_pivot" />
+    <child link="robot0_joint2_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 0.000000 1.000000" />
+    <limit lower="-1.762800" upper="1.762800" effort="1000" velocity="10" />
+  </joint>
+  <joint name="robot0_link2_from_robot0_joint2" type="fixed">
+    <parent link="robot0_joint2_link" />
+    <child link="robot0_link2" />
+    <origin xyz="-0.000000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint3_pivot" />
+  <joint name="robot0_joint3_anchor" type="fixed">
+    <parent link="robot0_link2" />
+    <child link="robot0_joint3_pivot" />
+    <origin xyz="0.000000 -0.316000 0.000000" rpy="1.570796 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint3_link" />
+  <joint name="robot0_joint3" type="revolute">
+    <parent link="robot0_joint3_pivot" />
+    <child link="robot0_joint3_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 0.000000 1.000000" />
+    <limit lower="-2.897300" upper="2.897300" effort="1000" velocity="10" />
+  </joint>
+  <joint name="robot0_link3_from_robot0_joint3" type="fixed">
+    <parent link="robot0_joint3_link" />
+    <child link="robot0_link3" />
+    <origin xyz="-0.000000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint4_pivot" />
+  <joint name="robot0_joint4_anchor" type="fixed">
+    <parent link="robot0_link3" />
+    <child link="robot0_joint4_pivot" />
+    <origin xyz="0.082500 0.000000 0.000000" rpy="1.570796 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint4_link" />
+  <joint name="robot0_joint4" type="revolute">
+    <parent link="robot0_joint4_pivot" />
+    <child link="robot0_joint4_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 0.000000 1.000000" />
+    <limit lower="-3.071800" upper="-0.069800" effort="1000" velocity="10" />
+  </joint>
+  <joint name="robot0_link4_from_robot0_joint4" type="fixed">
+    <parent link="robot0_joint4_link" />
+    <child link="robot0_link4" />
+    <origin xyz="-0.000000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint5_pivot" />
+  <joint name="robot0_joint5_anchor" type="fixed">
+    <parent link="robot0_link4" />
+    <child link="robot0_joint5_pivot" />
+    <origin xyz="-0.082500 0.384000 0.000000" rpy="-1.570796 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint5_link" />
+  <joint name="robot0_joint5" type="revolute">
+    <parent link="robot0_joint5_pivot" />
+    <child link="robot0_joint5_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 0.000000 1.000000" />
+    <limit lower="-2.897300" upper="2.897300" effort="1000" velocity="10" />
+  </joint>
+  <joint name="robot0_link5_from_robot0_joint5" type="fixed">
+    <parent link="robot0_joint5_link" />
+    <child link="robot0_link5" />
+    <origin xyz="-0.000000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint6_pivot" />
+  <joint name="robot0_joint6_anchor" type="fixed">
+    <parent link="robot0_link5" />
+    <child link="robot0_joint6_pivot" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="1.570796 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint6_link" />
+  <joint name="robot0_joint6" type="revolute">
+    <parent link="robot0_joint6_pivot" />
+    <child link="robot0_joint6_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 0.000000 1.000000" />
+    <limit lower="-0.017500" upper="3.752500" effort="1000" velocity="10" />
+  </joint>
+  <joint name="robot0_link6_from_robot0_joint6" type="fixed">
+    <parent link="robot0_joint6_link" />
+    <child link="robot0_link6" />
+    <origin xyz="-0.000000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint7_pivot" />
+  <joint name="robot0_joint7_anchor" type="fixed">
+    <parent link="robot0_link6" />
+    <child link="robot0_joint7_pivot" />
+    <origin xyz="0.088000 0.000000 0.000000" rpy="1.570796 -0.000000 0.000000" />
+  </joint>
+  <link name="robot0_joint7_link" />
+  <joint name="robot0_joint7" type="revolute">
+    <parent link="robot0_joint7_pivot" />
+    <child link="robot0_joint7_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 0.000000 1.000000" />
+    <limit lower="-2.897300" upper="2.897300" effort="1000" velocity="10" />
+  </joint>
+  <joint name="robot0_link7_from_robot0_joint7" type="fixed">
+    <parent link="robot0_joint7_link" />
+    <child link="robot0_link7" />
+    <origin xyz="-0.000000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <joint name="robot0_right_hand_fixed" type="fixed">
+    <parent link="robot0_link7" />
+    <child link="robot0_right_hand" />
+    <origin xyz="0.000000 0.000000 0.106500" rpy="0.000000 0.000000 -0.785891" />
+  </joint>
+  <joint name="gripper0_right_right_gripper_fixed" type="fixed">
+    <parent link="robot0_right_hand" />
+    <child link="gripper0_right_right_gripper" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 0.000000 -1.570796" />
+  </joint>
+  <joint name="gripper0_right_eef_fixed" type="fixed">
+    <parent link="gripper0_right_right_gripper" />
+    <child link="gripper0_right_eef" />
+    <origin xyz="0.000000 0.000000 0.097000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="gripper0_right_finger_joint1_pivot" />
+  <joint name="gripper0_right_finger_joint1_anchor" type="fixed">
+    <parent link="gripper0_right_right_gripper" />
+    <child link="gripper0_right_finger_joint1_pivot" />
+    <origin xyz="0.000000 0.000000 0.052400" rpy="0.000000 -0.000000 1.570796" />
+  </joint>
+  <link name="gripper0_right_finger_joint1_link" />
+  <joint name="gripper0_right_finger_joint1" type="prismatic">
+    <parent link="gripper0_right_finger_joint1_pivot" />
+    <child link="gripper0_right_finger_joint1_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 1.000000 0.000000" />
+    <limit lower="0.000000" upper="0.040000" effort="1000" velocity="10" />
+  </joint>
+  <joint name="gripper0_right_leftfinger_from_gripper0_right_finger_joint1" type="fixed">
+    <parent link="gripper0_right_finger_joint1_link" />
+    <child link="gripper0_right_leftfinger" />
+    <origin xyz="-0.000000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <joint name="gripper0_right_finger_joint1_tip_fixed" type="fixed">
+    <parent link="gripper0_right_leftfinger" />
+    <child link="gripper0_right_finger_joint1_tip" />
+    <origin xyz="0.000000 0.008500 0.056000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <link name="gripper0_right_finger_joint2_pivot" />
+  <joint name="gripper0_right_finger_joint2_anchor" type="fixed">
+    <parent link="gripper0_right_right_gripper" />
+    <child link="gripper0_right_finger_joint2_pivot" />
+    <origin xyz="0.000000 0.000000 0.052400" rpy="0.000000 -0.000000 1.570796" />
+  </joint>
+  <link name="gripper0_right_finger_joint2_link" />
+  <joint name="gripper0_right_finger_joint2" type="prismatic">
+    <parent link="gripper0_right_finger_joint2_pivot" />
+    <child link="gripper0_right_finger_joint2_link" />
+    <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 -0.000000 0.000000" />
+    <axis xyz="0.000000 1.000000 0.000000" />
+    <limit lower="-0.040000" upper="0.000000" effort="1000" velocity="10" />
+  </joint>
+  <joint name="gripper0_right_rightfinger_from_gripper0_right_finger_joint2" type="fixed">
+    <parent link="gripper0_right_finger_joint2_link" />
+    <child link="gripper0_right_rightfinger" />
+    <origin xyz="-0.000000 -0.000000 -0.000000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <joint name="gripper0_right_finger_joint2_tip_fixed" type="fixed">
+    <parent link="gripper0_right_rightfinger" />
+    <child link="gripper0_right_finger_joint2_tip" />
+    <origin xyz="0.000000 -0.008500 0.056000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+  <joint name="mobilebase0_wheeled_base_fixed" type="fixed">
+    <parent link="mobilebase0_base" />
+    <child link="mobilebase0_wheeled_base" />
+    <origin xyz="-0.200000 0.000000 0.192000" rpy="0.000000 -0.000000 0.000000" />
+  </joint>
+</robot>
