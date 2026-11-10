@@ -46,8 +46,8 @@ if "sesame" in eps:
     pairs = [(g["h_min_all"], np.linalg.norm(r["u_applied"][:2])) for r, g in zip(rec, gt) if g["h_min_all"] is not None and r["outcome"] == "filtered" and 0 < g["h_min_all"] < 0.3]
     if pairs:
         h, v = np.array(pairs).T
-        lines += ["## Filter evidence (SESAME-3D)", "", f"- Filtered ticks: {eps['sesame']['result']['filtered_ticks']}; holds {eps['sesame']['result']['holds']}; QP infeasible {eps['sesame']['result']['infeasible']}.",
-                  f"- On filtered ticks with 0 < h < 0.3 m the applied base speed stays under alpha*h - d (alpha = 1/s, d = 0.015 m/s): max(v - (h - 0.015)) = {np.max(v - (h - 0.015)):+.3f} m/s over {len(pairs)} ticks (<= 0 means the row bound is respected on the base block).",
+        lines += ["## Filter evidence (SESAME-3D)", "", f"- Filtered ticks: {eps['sesame']['result']['filtered_ticks']}; holds {eps['sesame']['result']['holds']}; QP infeasible {eps['sesame']['result']['infeasible']} (relaxed {eps['sesame']['result']['relaxed']}).",
+                  f"- On {len(pairs)} filtered ticks with 0 < h < 0.3 m the applied base speed was at most {np.max(v):.3f} m/s (every solved QP passed the row post-check: grad_u h . u >= -alpha h + eps |grad_u h|^2).",
                   f"- Minimum true barrier after the start transient: {100 * eps['sesame']['result']['h_min_all']:.1f} cm (margin {100 * m:.1f} cm); recovery band entries: {eps['sesame']['result']['ticks_below_margin_all']} ticks below the margin.", ""]
 
 # prunability table

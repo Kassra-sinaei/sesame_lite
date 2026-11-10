@@ -23,7 +23,6 @@ import os
 from typing import Literal
 
 import numpy as np
-import spark_dsg as dsg
 from langchain_core.messages import HumanMessage, SystemMessage, messages_to_dict
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
@@ -88,9 +87,8 @@ class SceneQueries:
         return None if entity_id in self.graph.nodes else f"unknown entity_id {entity_id!r}; use ids returned by find_entities"
 
     def room_of(self, node_id: str) -> str:
-        """Hydra's hierarchy: object -> place (parent) -> room (parent)."""
-        place = self.graph.dsg.get_node(self.graph.dsg_node(node_id).get_parent())
-        return str(dsg.NodeSymbol(place.get_parent()))
+        """Hydra's hierarchy: object -> place (parent) -> room (parent); "unknown" where the map has no such link."""
+        return self.graph.room_of(node_id)
 
 
 class Role(BaseModel):
@@ -112,7 +110,7 @@ def make_tools(q: SceneQueries) -> list:
         counts: dict[str, int] = {}
         for node in q.graph.nodes.values():
             counts[node.category] = counts.get(node.category, 0) + 1
-        return json.dumps({"task_instruction": q.task, "rooms": q.graph.rooms, "robot_room": q.graph.rooms[0],
+        return json.dumps({"task_instruction": q.task, "rooms": q.graph.rooms, "robot_room": q.graph.robot_room,
                            "arm_reach_m": 1.0, "entity_counts": dict(sorted(counts.items()))})
 
     @tool
@@ -129,7 +127,7 @@ def make_tools(q: SceneQueries) -> list:
         """The rooms the base passes through to reach an entity."""
         if (err := q.check_id(entity_id)) is not None:
             return json.dumps({"error": err})
-        rooms = [q.graph.rooms[0], q.room_of(entity_id)]
+        rooms = [q.graph.robot_room, q.room_of(entity_id)]
         return json.dumps({"entity_id": entity_id, "route": list(dict.fromkeys(rooms)), "distance_m": q.describe(entity_id)["distance_m"]})
 
     @tool
@@ -147,8 +145,8 @@ def make_tools(q: SceneQueries) -> list:
             if gap <= NEARBY_M:
                 nearby.append({"entity_id": nid, "label": n.category, "gap_m": round(gap, 2)})
         nearby.sort(key=lambda e: (e["gap_m"], e["entity_id"]))
-        clearance = float(q.graph.dsg.get_node(q.graph.dsg_node(entity_id).get_parent()).attributes.distance)
-        return json.dumps({**q.describe(entity_id), "nearby": nearby[:20], "free_space_clearance_m": round(clearance, 2)})
+        clearance = q.graph.place_clearance(entity_id)
+        return json.dumps({**q.describe(entity_id), "nearby": nearby[:20], "free_space_clearance_m": None if clearance is None else round(clearance, 2)})
 
     @tool
     def commit_plan(roles: list[Role], segments: list[PlanSegment]) -> str:

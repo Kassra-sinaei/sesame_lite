@@ -39,6 +39,7 @@ from sesame_lite.agents.pruning_classifier import (
 from sesame_lite.filter import CONTROL_DT_S, MODE_INDEX, FilterPolicy, PerRowFilter, RobotState, base_velocity_to_command
 from sesame_lite.geometry.swept_volume import BETA_DEVIATION_BUDGET_M
 from sesame_lite.planner import NAVIGATION, VLA, build_bundle, default_plan, resolve_plan
+from sesame_lite.uncertainty import kappa
 from sesame_lite.determinism import SAMPLER_SEED, begin_episode, seed_fallback_generators
 from sesame_lite.scene_graph import HydraSceneGraph, IdBridge, _raw_data, _raw_model, _subtree_body_ids, capture_scene_graph, hydra_lookup, perturb
 import sesame_lite.render_fix  # noqa: F401,E402  (stops freed render contexts from corrupting camera frames)
@@ -156,10 +157,12 @@ class UnmappedRoleError(RuntimeError):
 class SafetyFilterEnv(gym.Wrapper):
     """Per-row semantic safety filter in front of ``SesameRoboCasaEnv``; segments come from a plan."""
 
-    def __init__(self, env: SesameRoboCasaEnv, *, pruning: bool = True, filter: bool = True, classifier: str = "prior", policy: FilterPolicy = FilterPolicy(), graph_noise: dict | None = None, noise_seed: int = 0, graph_source: str = "oracle"):
+    def __init__(self, env: SesameRoboCasaEnv, *, pruning: bool = True, filter: bool = True, classifier: str = "prior", policy: FilterPolicy = FilterPolicy(), graph_noise: dict | None = None, noise_seed: int | None = None, graph_source: str = "oracle"):
         super().__init__(env)
         if graph_source not in ("oracle", "hydra"):
             raise ValueError(graph_source)
+        if graph_source == "hydra" and graph_noise:
+            raise ValueError("graph_noise (synthetic face noise) is the oracle-graph fallback; a Hydra map has its own")
         self.pruning, self.filter_on, self.classifier_kind, self.policy = pruning, filter, classifier, policy
         self.graph_source = graph_source
         self.tag = run_tag(pruning, filter)
@@ -237,8 +240,8 @@ class SafetyFilterEnv(gym.Wrapper):
         self.filter = PerRowFilter(replace(self.policy, base_z_interval_m=self.z_band))
         self.base_radius = float(np.max(np.linalg.norm(self.rect, axis=1)))
         self.plan = plan or default_plan(rs)
-        # a goal must leave room for the filter's standoff: margin + the ISSf equilibrium d/alpha + 1 cm
-        standoff = self.policy.policy_margin_m + self.policy.disturbance_margin_mps / self.policy.barrier_gain + 0.01
+        # a goal must leave room for the filter's standoff (kept at its earlier value: margin + d/alpha + 1 cm)
+        standoff = self.policy.goal_standoff_m
         self.plan_kwargs = dict(base_xy=bp[:2], rect_xy=self.rect, z_band=self.z_band, clearance_m=standoff, inflation_m=float(hi[1] - lo[1]) / 2 + 0.10)
         self.segments = self._resolve()
         self.gt_passable_oracle_ids = set()
@@ -257,7 +260,7 @@ class SafetyFilterEnv(gym.Wrapper):
         # contact bookkeeping (MuJoCo body -> oracle node), from the oracle lookup
         self.oracle_id_of_body = {b: oracle_id for oracle_id, bodies in self.oracle_lookup.bodies.items() for b in bodies}
         self.robot_bodies = _subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, rs.robots[0].robot_model.root_body))
-        self.receipts, self.ground_truth, self.bundles, self.min_h_by_oracle_id = [], [], [], {}
+        self.receipts, self.ground_truth, self.bundles, self.min_h_by_oracle_id, self.confidence_log = [], [], [], {}, []
         self.tick, self.epoch, self.hold_streak, self._prev_pose = 0, 0, 0, None
         self.replans, self.segment_index = 0, -1
         self.begin_segment(0)
@@ -274,7 +277,8 @@ class SafetyFilterEnv(gym.Wrapper):
         """
         self.oracle_graph, self.oracle_lookup = capture_scene_graph(self.rs)
         if self.graph_source == "oracle":
-            self.graph = perturb(self.oracle_graph, np.random.default_rng(self.noise_seed), **self.graph_noise) if self.graph_noise else self.oracle_graph
+            rng = np.random.default_rng(self.seed if self.noise_seed is None else self.noise_seed)
+            self.base_graph = perturb(self.oracle_graph, rng, **self.graph_noise) if self.graph_noise else self.oracle_graph
             self.bridge, self.lookup = IdBridge.identity(self.oracle_graph), self.oracle_lookup
         else:
             from sesame_lite.mapping import build_map, map_dir
@@ -285,10 +289,13 @@ class SafetyFilterEnv(gym.Wrapper):
             cached_id = json.loads((cache / "meta.json").read_text())["oracle_snapshot_id"]
             assert cached_id == self.oracle_graph.snapshot_id, f"map cache {cache} belongs to another scene ({cached_id} != {self.oracle_graph.snapshot_id})"
             bp, R, _ = self.robot_pose()
-            self.graph = HydraSceneGraph(cache, self.oracle_graph.labels, robot_pose=(bp, float(np.arctan2(R[1, 0], R[0, 0]))))
-            self.bridge = IdBridge.from_instances(self.graph, self.oracle_graph)
+            self.base_graph = HydraSceneGraph(cache, self.oracle_graph.labels, robot_pose=(bp, float(np.arctan2(R[1, 0], R[0, 0]))))
+            self.bridge = IdBridge.from_instances(self.base_graph, self.oracle_graph)
             self.lookup = hydra_lookup(self.oracle_lookup, self.bridge)
         self.n_capture += 1
+        # planning, standoff and pruning see the confidence boxes for the largest admitted count (every node), so they
+        # are never smaller than the boxes the filter enforces once a segment's admitted count is known
+        self.graph = self.base_graph.with_confidence(kappa=kappa(self.policy.delta, len(self.base_graph.nodes)), m_d=self.policy.disturbance_offset_m)
         self.oracle_fragments, self.fragments = self.oracle_graph.fragments(), self.graph.fragments()
 
     def _resolve(self):
@@ -313,11 +320,18 @@ class SafetyFilterEnv(gym.Wrapper):
         seg = self.segments[index]
         self.bundle = build_bundle(seg, self.graph, classifier=self._classifier, base_circumscribed_radius_m=self.base_radius, policy_margin_m=self.policy.policy_margin_m, eef_reach_m=1.0 * CONTROL_DT_S)
         self.bundles.append(self.bundle)
+        # the confidence boxes of this segment: delta split over its admitted nodes (every node without pruning)
+        n_risk = len(self.bundle.admitted_ids) if self.pruning else len(self.base_graph.nodes)
+        self.row_graph = self.base_graph.with_confidence(kappa=kappa(self.policy.delta, n_risk), m_d=self.policy.disturbance_offset_m)
+        self.fragments = self.row_graph.fragments()
         row_ids = self.bundle.admitted_ids if self.pruning else [n.node_id for n in self.graph.obstacle_nodes()]
         self.row_ids = self.graph.fragment_ids_of(row_ids, exempt=seg.exempt_ids)
         # ground truth: every non-exempt node of the oracle graph (and nothing drivable by construction), the same for every switch setting
         self.exempt_oracle_ids = {self.bridge.to_oracle(hydra_id) for hydra_id in seg.exempt_ids} - {None} | set(self.gt_passable_oracle_ids)
         self.eval_ids = self.oracle_graph.fragment_ids_of([n.node_id for n in self.oracle_graph.obstacle_nodes()], exempt=self.exempt_oracle_ids)
+        admitted_faces = [n.confidence["kappa_sigma"][k] for nid, n in self.row_graph.nodes.items() if nid in set(self.row_ids) for k in range(6)]
+        self.confidence_log.append({"segment": index, "epoch": self.epoch + 1, "n_risk": n_risk, "kappa": kappa(self.policy.delta, n_risk), "m_d": self.policy.disturbance_offset_m,
+                                    "m_r": self.base_graph.voxel_size_m / 4, "kappa_sigma_admitted_faces": admitted_faces, "boxes": self.row_graph.confidence_as_dict()})
         self.epoch += 1
         self.segment_start_tick = self.tick
 
@@ -330,7 +344,7 @@ class SafetyFilterEnv(gym.Wrapper):
         return self.bridge.unmapped(self.oracle_graph)
 
     def _true_h(self, state: RobotState) -> float | None:
-        samples, _, _ = self.filter.build_rows(state, self.oracle_fragments, base_rows_for=self.eval_ids, eef_rows_for=self.eval_ids, skip_beyond_m=GT_HORIZON_M)
+        samples, _, _, _ = self.filter.build_rows(state, self.oracle_fragments, base_rows_for=self.eval_ids, eef_rows_for=self.eval_ids, skip_beyond_m=GT_HORIZON_M, exact=True)
         for s in samples:
             key = f"O:{s.obstacle_parent_id}"
             self.min_h_by_oracle_id[key] = min(self.min_h_by_oracle_id.get(key, np.inf), s.value)
@@ -347,6 +361,13 @@ class SafetyFilterEnv(gym.Wrapper):
         oracle_id = self.bridge.to_oracle(filter_id) if filter_id else None
         rec.update(segment=self.segment_index, epoch=self.epoch, graph_source=self.graph_source,
                    h_min_id=f"{self.bridge.prefix}{filter_id}" if filter_id else None, h_min_oracle_id=f"O:{oracle_id}" if oracle_id else None)
+        # every active row: node, category, the nearest face's kappa*sigma and total inflation, and h
+        rows = []
+        for row_id, body, h, face in receipt.active_rows:
+            conf = self.row_graph.nodes[row_id].confidence
+            rows.append({"id": f"{self.bridge.prefix}{row_id}", "body": body, "category": self.row_graph.nodes[row_id].category,
+                         "kappa_sigma": round(conf["kappa_sigma"][face], 5), "inflation": round(conf["inflation"][face], 5), "h": round(h, 5)})
+        rec["active_rows"] = rows
         self.receipts.append(rec)
         self.hold_streak = self.hold_streak + 1 if rec["outcome"] == "hold" else 0
         self.ground_truth.append(
@@ -453,7 +474,13 @@ class SafetyFilterEnv(gym.Wrapper):
             # contacts with objects the map has no node for (the filter cannot protect them; scoring still counts them)
             "contact_unmapped_nodes": sorted({oracle_id for g in gt for oracle_id in g["touched"] if oracle_id[2:] in set(self.unmapped_oracle_ids)}),
             "graph_source": self.graph_source,
+            "graph_label": self.base_graph.label,
             "unmapped_oracle_ids": [f"O:{oracle_id}" for oracle_id in self.unmapped_oracle_ids],
+            "h_min_filter": min((r["h_min"] for r in self.receipts if r["h_min"] is not None), default=None),  # smallest h of the rows (confidence boxes)
+            "ticks_h_negative": sum(1 for r in self.receipts if r["h_min"] is not None and r["h_min"] < 0.0),
+            "kappa_sigma_admitted_faces": [{"segment": c["segment"], "kappa": c["kappa"], "n_risk": c["n_risk"], "m_r": c["m_r"], "m_d": c["m_d"],
+                                            "quantiles_m": dict(zip(["min", "50%", "90%", "max"], np.percentile(c["kappa_sigma_admitted_faces"], [0, 50, 90, 100]).round(5).tolist())) if c["kappa_sigma_admitted_faces"] else None}
+                                           for c in self.confidence_log],
             "holds": self.filter.hold_count,
             "infeasible": self.filter.infeasible_count,
             "relaxed": self.filter.relaxed_count,
@@ -483,7 +510,9 @@ class SafetyFilterEnv(gym.Wrapper):
                     "eval_ids": list(self.eval_ids),
                     "segments": [s.as_dict() for s in self.segments],
                     "bundles": [b.as_dict() for b in self.bundles],
-                    "graph": self.graph.as_dict(),
+                    "graph": self.base_graph.as_dict(),  # the filter side's estimated boxes (and faces with their std)
+                    "oracle_graph": self.oracle_graph.as_dict(),  # evaluation side
+                    "confidence": self.confidence_log,  # per segment: kappa, margins and every confidence box
                     "oracle_lookup": self.oracle_lookup.as_dict(),  # evaluation side only
                     "id_bridge": self.bridge.as_dict(),  # filter-side id -> oracle id
                     "min_h_by_oracle_id": self.min_h_by_oracle_id,

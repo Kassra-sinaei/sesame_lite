@@ -27,6 +27,7 @@ SIGNED_CYLINDER_DISTANCE_BACKEND_VERSION = (
 RECTANGLE_DISC_BACKEND_VERSION = (
     "phase6-analytic-rectangle-disc/1"
 )
+SMOOTH_BOX_BARRIER_BACKEND_VERSION = "smooth-point-box-logsumexp/1"
 # Capture-time routing may select a cylinder only when the fragment axis is
 # this close to world-vertical; otherwise the OBB representation is kept.
 CYLINDER_UPRIGHT_MINIMUM_AXIS_COSINE = 0.99
@@ -131,6 +132,57 @@ def signed_point_box_barrier(
         distance_is_signed=True,
         nonsmooth=nonsmooth,
     )
+
+
+def box_faces(obstacle: OrientedBoxFragment) -> tuple[np.ndarray, np.ndarray]:
+    """The box as six half-spaces A x <= b: rows +R0, -R0, +R1, -R1, +R2, -R2 of its full 3-D rotation."""
+    R = obstacle.rotation
+    A = np.stack([R[:, 0], -R[:, 0], R[:, 1], -R[:, 1], R[:, 2], -R[:, 2]])
+    b = A @ np.asarray(obstacle.center, dtype=np.float64) + np.repeat(np.asarray(obstacle.half_extents, dtype=np.float64), 2)
+    return A, b
+
+
+def smooth_point_box_barrier(
+    point: Sequence[float] | np.ndarray,
+    obstacle: OrientedBoxFragment,
+    *,
+    protected_radius: float,
+    policy_margin: float,
+    tau: float,
+    protected_id: str,
+) -> tuple[RawBarrierSample, int]:
+    """Smooth sphere-to-box barrier (uncertainty_cvar.pdf eqs. 5-6) and the index of the nearest face.
+
+        g = A s - b,  psi = tau log sum exp(g / tau) - tau log 6,  h = psi - radius - margin,  dh/ds = softmax(g / tau) A
+
+    Smooth everywhere (also inside the box), |dh/ds| <= 1, and psi <= max_k g_k <= distance to the box: it never
+    reports more clearance than there is (at most tau log 6 = 9 mm less along a face for tau = 5 mm, more near corners).
+    """
+    s = np.asarray(point, dtype=np.float64)
+    A, b = box_faces(obstacle)
+    g = A @ s - b
+    m = float(g.max())
+    e = np.exp((g - m) / tau)
+    total = float(e.sum())
+    psi = m + tau * math.log(total) - tau * math.log(6.0)
+    pi = e / total
+    grad = pi @ A
+    sample = RawBarrierSample.from_validated_geometry(
+        family=BarrierFamily.MOBILE_MANIPULATION,
+        protected_id=protected_id,
+        obstacle_id=obstacle.fragment_id,
+        obstacle_parent_id=obstacle.parent_stable_id,
+        value=psi - float(protected_radius) - float(policy_margin),
+        point_jacobian=tuple(float(v) for v in grad),
+        surface_distance_m=psi,
+        protected_radius_m=float(protected_radius),
+        policy_margin_m=float(policy_margin),
+        distance_backend=SMOOTH_BOX_BARRIER_BACKEND_VERSION,
+        geometry_kind="oriented_box_fragment",
+        distance_is_signed=True,
+        nonsmooth=False,
+    )
+    return sample, int(np.argmax(g))
 
 
 def convex_hull_xy(

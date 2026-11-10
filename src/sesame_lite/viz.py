@@ -117,7 +117,7 @@ class WorldRenderer:
                 scn.geoms[i].rgba[3] = 0.12
         if overlays:
             roles = fragment_roles(env)
-            for node in env.graph.obstacle_nodes():
+            for node in getattr(env, "row_graph", env.graph).obstacle_nodes():  # the confidence boxes the filter enforces now
                 frag = node.fragment()
                 self._add(mujoco.mjtGeom.mjGEOM_BOX, frag.half_extents, frag.center, frag.rotation, RGBA[roles[node.node_id]])
             seg = env.segment
@@ -169,7 +169,8 @@ class EpisodeRecorder:
         rec, gt = env.receipts[-1], env.ground_truth[-1]
         draw = ImageDraw.Draw(frame, "RGBA")
         draw.rectangle([0, 0, frame.width, 46], fill=(0, 0, 0, 170))
-        draw.text((12, 6), RUN_TITLES[env.tag], font=self.font, fill=(255, 255, 255))
+        source = env.base_graph.label
+        draw.text((12, 6), RUN_TITLES[env.tag] + ("" if source == "oracle" else f"  |  {source}"), font=self.font, fill=(255, 255, 255))
         h = gt["h_min_all"]
         rows = "unfiltered" if not env.filter_on else f"constraints {len(env.row_ids)} parts (active {rec['n_rows']})"
         status = f"t = {env.tick * 0.05:4.1f} s   {rows}   clearance {100 * h:+5.1f} cm" if h is not None else f"t = {env.tick * 0.05:4.1f} s   {rows}"
@@ -185,7 +186,8 @@ class EpisodeRecorder:
         if not self.frames:
             return
         category = {nid: n.category for nid, n in self.env.graph.nodes.items()}
-        n_contact, nodes = result["contact_ticks"], [category.get(n, n) for n in result["contact_nodes"]]
+        oracle_category = {f"O:{oid}": n.category for oid, n in self.env.oracle_graph.nodes.items()}  # contacts are oracle ids
+        n_contact, nodes = result["contact_ticks"], [oracle_category.get(n, n) for n in result["contact_nodes"]]
         if result["outcome"] == "success":
             text, color = "GOAL REACHED  -  no contact", (40, 160, 90)
         elif result["outcome"] == "success_but_unsafe":

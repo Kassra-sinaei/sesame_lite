@@ -61,7 +61,7 @@ env = SafetyFilterEnv(base, filter=False, graph_source="hydra")
 env.reset(seed=args.seed, plan=mission)  # loads the cached maps; the last one is the scene the episode runs in
 n_map = env.n_capture - 1
 out_dir = map_dir(mission["mission"], args.seed, n_map)
-hydra, oracle, bridge, labels = env.graph, env.oracle_graph, env.bridge, env.oracle_graph.labels
+hydra, oracle, bridge, labels = env.base_graph, env.oracle_graph, env.bridge, env.oracle_graph.labels  # estimated boxes (no confidence inflation)
 oracle_name = {v: k for k, v in env.oracle_lookup.node_of.items()}
 faces_file = json.loads((out_dir / "faces.json").read_text())
 voxel = hydra.voxel_size_m
