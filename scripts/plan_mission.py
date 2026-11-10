@@ -1,4 +1,6 @@
-"""Plan one mission with the LangGraph planner (Qwen3-14B, tool calling) and write it as a runnable plan file.
+"""TODO (spec v4, section 11): the Qwen planner on the Hydra map is out of scope for this version; not run since v4.
+
+Plan one mission with the LangGraph planner (Qwen3-14B, tool calling) and write it as a runnable plan file.
 
 The scene is the mission's kitchen at the given seed, exactly as run_episode builds it (for nav_clutter: with the
 flour bag already on the floor). The planner sees only the Hydra scene graph and the task instruction.
@@ -31,12 +33,11 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--plan", required=True, help="the mission file in plans/ (task, kitchen and the hand-written reference plan)")
 ap.add_argument("--seed", type=int, default=0)
 ap.add_argument("--out", default="outputs/plans_llm")
-ap.add_argument("--graph-source", default="oracle", choices=("oracle", "hydra"), help="the graph the planner sees (hydra: the cached map of this scene)")
 args = ap.parse_args()
 
 mission = load_plan(args.plan)
 base = SesameRoboCasaEnv(mission["task"], env_kwargs=dict(mission.get("env_kwargs", {})), episode_length=mission.get("horizon"))
-env = SafetyFilterEnv(base, filter=False, graph_source=args.graph_source)  # no classifier call; reset builds the scene and its scene graph
+env = SafetyFilterEnv(base, filter=False)  # no classifier call; reset builds the scene and its scene graph
 env.reset(seed=args.seed, plan=mission)
 task_instruction = env.env.task_description
 
@@ -53,7 +54,7 @@ out_dir = Path(args.out)
 out_dir.mkdir(parents=True, exist_ok=True)
 stem = f"{mission['mission']}_s{args.seed}"
 plan_file = {key: mission[key] for key in ("task", "env_kwargs", "horizon", "injections") if key in mission}
-plan_file.update({"mission": mission["mission"], "seed": args.seed, "task_instruction": task_instruction, "graph_source": args.graph_source,
+plan_file.update({"mission": mission["mission"], "seed": args.seed, "task_instruction": task_instruction, "graph_source": "hydra",
                   **(result["plan"] or {"roles": {}, "segments": []}),
                   "planner": {"accepted": result["plan"] is not None, "failure": result["failure"], "turns": result["turns"],
                               "wall_s": round(wall_s, 1), "committed": result["committed"], "settings": result["settings"]},

@@ -1,21 +1,24 @@
-"""SESAME-3D on RoboCasa: lerobot's ``RoboCasaEnv`` subclassed for pinned, non-resetting episodes,
-a gym wrapper that runs the per-row semantic safety filter, and the two nominal policies.
+"""SESAME-3D on RoboCasa: lerobot's ``RoboCasaEnv`` subclassed for pinned, non-resetting episodes, a gym wrapper
+that runs the safety filter of spec v4 on Hydra's map, and the nominal policies.
 
 What runs is set by two switches (defaults: both on, the SESAME-3D method). Every run of a seed shares the scene
 (pinned episode metadata), the nominal policy, the barrier definition and the ground-truth evaluation set:
 
-  pruning   on: rows only for the nodes admitted by the swept-volume stage and the semantic classifier
-            off: every scene-graph node is a row (the plan's contact exemptions still apply)
-  filter    on: the QP corrects the action
-            off: rows are evaluated but the action passes unchanged (reference run, no classifier call)
+  pruning   on: rows only for the objects admitted by the swept-volume stage and the semantic classifier
+            off: TODO (spec v4, section 11): out of scope for this version
+  filter    on: the QP of eq. (9) sets the base and arm joint velocities
+            off: the rows are evaluated, the nominal joint velocities drive the robot (no classifier call)
 
-Nominal policies: ``nav`` (pure-pursuit follower on the planned polyline, the navigation-stack
-analog) and ``smolvla`` (lerobot/smolvla_robocasa through lerobot's own processing pipeline).
+Every tick: u_nom (base: the command's joint velocities; arm: robosuite's OSC response, joint_drive.py), the filter
+(filter.py), then the base command for the filtered base velocities and the arm drive's joint velocity command.
+Ground truth (evaluation only): every robot sphere against the oracle boxes of the non-exempt objects, and contacts.
 ``MissionRunner`` sequences the plan's segments. One process per episode (scripts/run_episode.py).
 """
 
 from __future__ import annotations
 
+from collections import Counter
+from dataclasses import asdict
 import json
 import os
 from pathlib import Path
@@ -35,10 +38,24 @@ from sesame_lite.agents.pruning_classifier import (
     QwenClassifier,
     StickyPassabilityClassifier,
 )
-from sesame_lite.filter import CONTROL_DT_S, MODE_INDEX, FilterPolicy, base_velocity_to_command
-from sesame_lite.planner import NAVIGATION, VLA, build_bundle, default_plan, resolve_plan
+from sesame_lite.filter import (
+    BASE_SLICE,
+    CONTROL_DT_S,
+    EE_POS_SLICE,
+    EE_ROT_SLICE,
+    MODE_INDEX,
+    TORSO_INDEX,
+    BaseModel,
+    FilterPolicy,
+    SphereFilter,
+)
+from sesame_lite.geometry.swept_volume import BETA_DEVIATION_BUDGET_M
+from sesame_lite.joint_drive import JointVelocityDrive, pd_mean_velocity
+from sesame_lite.planner import NAVIGATION, VLA, NoPathError, build_bundle, default_plan, resolve_plan
+from sesame_lite.robot_spheres import RobotSpheres
+from sesame_lite.truth import CollisionGeometry
 from sesame_lite.determinism import SAMPLER_SEED, begin_episode, seed_fallback_generators
-from sesame_lite.scene_graph import HydraSceneGraph, IdBridge, _raw_data, _raw_model, _subtree_body_ids, capture_scene_graph, hydra_lookup
+from sesame_lite.scene_graph import HydraSceneGraph, IdBridge, _collision_geoms, _raw_data, _raw_model, _subtree_body_ids, capture_scene_graph, hydra_lookup
 import sesame_lite.render_fix  # noqa: F401,E402  (stops freed render contexts from corrupting camera frames)
 
 # The checkpoint's own camera assignment (policy_preprocessor.json); lerobot's docs swap camera2/camera3.
@@ -209,7 +226,6 @@ class SafetyFilterEnv(gym.Wrapper):
         self.n_capture = 0
         self._capture()
         bp, R, _ = self.robot_pose()
-        self.init_yaw = float(np.arctan2(R[1, 0], R[0, 0]))  # the base controller's reference orientation
         pg, Rg, size = self._base_box()
         signs = np.array([(-1, -1), (1, -1), (1, 1), (-1, 1)], dtype=float)
         local = ((pg[None, :2] + (signs * size[:2]) @ Rg[:2, :2].T) - bp[None, :2]) @ R[:2, :2]
@@ -234,10 +250,18 @@ class SafetyFilterEnv(gym.Wrapper):
         # contact bookkeeping (MuJoCo body -> oracle node), from the oracle lookup
         self.oracle_id_of_body = {b: oracle_id for oracle_id, bodies in self.oracle_lookup.bodies.items() for b in bodies}
         self.robot_bodies = _subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, rs.robots[0].robot_model.root_body))
-        self.receipts, self.ground_truth, self.bundles, self.ball_log = [], [], [], []
-        self.tick, self.epoch = 0, 0
+        self.true_geometry = CollisionGeometry(model, {oid: _collision_geoms(model, bodies) for oid, bodies in self.oracle_lookup.bodies.items()})
+        robot = rs.robots[0]
+        self.robot = RobotSpheres(model, _raw_data(rs.sim))
+        self.drive = JointVelocityDrive.install(robot)
+        self.base_ctrl, self.torso_ctrl = robot.composite_controller.part_controllers["base"], robot.composite_controller.part_controllers["torso"]
+        self.filter = SphereFilter(self.robot, self.policy)
+        self.base_model = BaseModel()
+        self.receipts, self.ground_truth, self.bundles, self.ball_log, self.q_log, self.sphere_h_log = [], [], [], [], [], []
+        self.tick, self.epoch, self.hold_streak, self.stop_reason = 0, 0, 0, None
         self.replans, self.segment_index = 0, -1
         self.begin_segment(0)
+        self.start = self._start_check()
         return obs, info
 
     def _capture(self) -> None:
@@ -292,6 +316,12 @@ class SafetyFilterEnv(gym.Wrapper):
         # ground truth: every non-exempt node of the oracle graph, the same for every switch setting
         self.exempt_oracle_ids = {self.bridge.to_oracle(hydra_id) for hydra_id in seg.exempt_ids} - {None}
         self.eval_ids = self.oracle_graph.fragment_ids_of([n.node_id for n in self.oracle_graph.obstacle_nodes()], exempt=self.exempt_oracle_ids)
+        boxes = [self.oracle_graph.nodes[o].aabb() for o in self.eval_ids]  # oracle boxes are axis-aligned
+        self.eval_lo, self.eval_hi = np.array([lo for lo, _ in boxes]).reshape(-1, 3), np.array([hi for _, hi in boxes]).reshape(-1, 3)
+        row_oracle = {self.bridge.to_oracle(nid) for nid in self.row_ids} - {None}
+        self.eval_is_row = np.array([o in row_oracle for o in self.eval_ids], dtype=bool)  # oracle boxes of the row objects
+        self.eval_set, self.row_oracle = set(self.eval_ids), row_oracle
+        self.filter.set_objects(self.row_balls)
         ks = np.concatenate([b.kappa * np.minimum(self.graph.nodes[nid].std, b.s_max) for nid, b in self.row_balls.items()] or [np.zeros(0)])
         self.ball_log.append({"segment": index, "epoch": self.epoch + 1, "n_admitted": len(self.row_ids), "m_r": self.graph.m_r, "m_d": self.policy.m_d,
                               "kappa": {nid: b.kappa for nid, b in self.row_balls.items()}, "s_max": {nid: b.s_max for nid, b in self.row_balls.items()},
@@ -308,13 +338,238 @@ class SafetyFilterEnv(gym.Wrapper):
     def unmapped_oracle_ids(self) -> list[str]:
         return self.bridge.unmapped(self.oracle_graph)
 
+    # ------------------------------------------------------------------ robot state
+
+    def base_theta(self) -> float:
+        """theta of robosuite's base controller: base yaw now minus at episode start (turns the command onto the slides)."""
+        import robosuite.utils.transform_utils as T
+
+        _, ori = self.base_ctrl.get_base_pose()
+        return float(T.mat2euler(ori)[2] - T.mat2euler(self.base_ctrl.init_ori)[2])
+
+    def _start_check(self) -> dict:
+        """The start pose against the balls planning uses (kappa for every node admitted; spec v4, section 9), and the
+        truth. Nothing is done about it: the QP acts from the first tick and the receipts show what happens."""
+        model, data = _raw_model(self.rs.sim), _raw_data(self.rs.sim)
+        mujoco.mj_forward(model, data)
+        check = SphereFilter(self.robot, self.policy)
+        check.set_objects({nid: b for nid, b in self.plan_balls.items() if nid not in self.segments[0].exempt_ids})
+        bar = check.barrier(self.robot.q(data))
+        i, j = np.unravel_index(int(np.argmin(bar.h)), bar.h.shape)
+        truth = self._truth(bar.centres, bar.radii)
+        return {"h_min": float(bar.h[i, j]), "pair": [int(i), self.robot.links[i], check.object_ids[j]], "pairs_below_zero": int((bar.h < 0).sum()),
+                "spheres_below_zero": sorted({self.robot.links[k] for k in np.flatnonzero(bar.h.min(axis=1) < 0)}),
+                "objects_below_zero": sorted({check.object_ids[k] for k in np.flatnonzero(bar.h.min(axis=0) < 0)}), "true_clearance": truth["clearance"], "true_pair": truth["pair"]}
+
+    def _truth(self, centres: np.ndarray, radii: np.ndarray) -> dict:
+        """Smallest signed distance of every robot sphere to the oracle boxes of the non-exempt objects (exact)."""
+        if len(self.eval_lo) == 0:
+            return {"clearance": None, "pair": None, "clearance_rows": None, "geom_clearance": None, "geom_pair": None, "geom_clearance_rows": None}
+        c = centres[:, None, :]
+        out = np.maximum(np.maximum(self.eval_lo[None] - c, c - self.eval_hi[None]), 0.0)
+        dist = np.linalg.norm(out, axis=2)
+        depth = np.min(np.minimum(c - self.eval_lo[None], self.eval_hi[None] - c), axis=2)
+        sd = np.where(dist > 0, dist, -depth) - radii[:, None]
+        i, j = np.unravel_index(int(np.argmin(sd)), sd.shape)
+        rows = sd[:, self.eval_is_row]
+        data = _raw_data(self.rs.sim)
+        geom, gpair = self.true_geometry.clearance(data, centres, radii, self.eval_set)
+        geom_rows, _ = self.true_geometry.clearance(data, centres, radii, self.row_oracle)
+        return {"clearance": float(sd[i, j]), "pair": [self.robot.links[i], f"O:{self.eval_ids[j]}"],
+                "clearance_rows": float(rows.min()) if rows.size else None,  # the same objects as the rows (to check the barrier)
+                # exact, to the collision geometry (truth.py; None: nothing within its horizon)
+                "geom_clearance": geom, "geom_pair": None if gpair is None else [self.robot.links[gpair[0]], f"O:{gpair[1]}"], "geom_clearance_rows": geom_rows}
+
     # ------------------------------------------------------------------ gym API
 
     def step(self, action):
-        """Spec v4 step 2: the filter is not there yet (step 3); only the unfiltered reference may run."""
-        if self.filter_on:
-            raise NotImplementedError("the point-cloud filter is spec v4 step 3")
-        return self.env.step(np.asarray(action, dtype=np.float32))
+        a = np.asarray(action, dtype=float).copy()
+        model, data = _raw_model(self.rs.sim), _raw_data(self.rs.sim)
+        mujoco.mj_forward(model, data)  # derived quantities of the current state (step1 of the next step recomputes the same)
+        q, qd, theta = self.robot.q(data), self.robot.qdot(data), self.base_theta()
+        n_sub = int(round(CONTROL_DT_S / model.opt.timestep))
+        u_arm, profile = self.drive.nominal(a[EE_POS_SLICE.start:EE_ROT_SLICE.stop], bool(a[MODE_INDEX] >= 0.5), n_sub)
+        v0 = qd[:3]
+        u_nom = np.r_[self.base_model.nominal(a[BASE_SLICE], theta, v0), u_arm]
+        torso = self.torso_ctrl  # robosuite's joint-position PD (kp 2000, critically damped) towards q + delta
+        known = np.r_[pd_mean_velocity(-torso.scale_action(a[TORSO_INDEX:TORSO_INDEX + 1]), qd[3:4], np.sqrt(torso.kp[0]), CONTROL_DT_S), qd[11:13]]
+        u, rec, bar = self.filter.filter(tick=self.tick, q=q, u_nom=u_nom, known_qdot=known, base_bounds=self.base_model.bounds(v0), passive=not self.filter_on)
+        if not np.allclose(u[:3], u_nom[:3], rtol=0.0, atol=1e-9):  # the base command only changes if the filter changed it
+            a[BASE_SLICE] = self.base_model.command(u[:3], theta, v0)
+        self.drive.command = (u[3:], profile)
+        self.last_barrier = bar
+        self._record(rec.as_dict(), np.asarray(action, dtype=float), q, bar)
+        out = self.env.step(a.astype(np.float32))
+        if self.segment.kind == NAVIGATION and self.replans < MAX_REPLANS and self._path_deviation() > BETA_DEVIATION_BUDGET_M:
+            self.replan()  # Assumption 1 premise violated: new path from here, new epoch (stage 1 + labels again)
+        return out
+
+    def _record(self, rec: dict, action: np.ndarray, q: np.ndarray, bar) -> None:
+        """One tick's receipt, its ground truth and the robot's joints."""
+        rec.update(segment=self.segment_index, epoch=self.epoch, action=[float(v) for v in action])
+        if rec["h_min_pair"] is not None:
+            rec["h_min_category"] = self.graph.nodes[rec["h_min_pair"][2]].category
+            rec["h_min_oracle_id"] = f"O:{self.bridge.to_oracle(rec['h_min_pair'][2])}"
+        self.receipts.append(rec)
+        self.hold_streak = self.hold_streak + 1 if rec["outcome"] == "hold" else 0
+        truth = self._truth(bar.centres, bar.radii)
+        bp, R, _ = self.robot_pose()
+        self.ground_truth.append({"tick": self.tick, "segment": self.segment_index, "clearance": truth["clearance"], "clearance_pair": truth["pair"], "clearance_rows": truth["clearance_rows"],
+                                  "geom_clearance": truth["geom_clearance"], "geom_pair": truth["geom_pair"], "geom_clearance_rows": truth["geom_clearance_rows"],
+                                  "touched": sorted(f"O:{oracle_id}" for oracle_id in self._touched_oracle_ids() - self.exempt_oracle_ids),
+                                  "base_xy": bp[:2].round(4).tolist(), "yaw": float(np.arctan2(R[1, 0], R[0, 0]))})
+        self.q_log.append(q)
+        self.sphere_h_log.append(bar.h.min(axis=1) if bar.h.shape[1] else np.full(len(bar.radii), np.inf))
+        self.tick += 1
+
+    def _path_deviation(self) -> float:
+        p, path = np.asarray(self.ground_truth[-1]["base_xy"]), self.segment.path_polyline_xy
+        seg = path[1:] - path[:-1]
+        t = np.clip(np.einsum("ij,ij->i", p - path[:-1], seg) / np.maximum(np.einsum("ij,ij->i", seg, seg), 1e-12), 0, 1)
+        return float(np.min(np.linalg.norm(path[:-1] + t[:, None] * seg - p, axis=1)))
+
+    def replan(self) -> None:
+        """New base path from here on the planning balls (NoPathError stops the mission; MissionRunner records it)."""
+        from sesame_lite.planner import plan_base_path
+
+        seg = self.segment
+        seg.path_polyline_xy = plan_base_path(self.graph, self.plan_balls, self.ground_truth[-1]["base_xy"], seg.path_polyline_xy[-1], inflation_m=self.plan_kwargs["inflation_m"], z_band=self.z_band)
+        self.replans += 1
+        self.begin_segment(self.segment_index)
+
+    # ------------------------------------------------------------------ segment completion
+
+    def segment_done(self) -> bool:
+        d = self.segment.done
+        if d["check"] == "task_success":
+            return bool(self.rs._check_success())
+        if d["check"] == "base_near_goal":
+            bp = self.robot_pose()[0]
+            goal, yaw = self.segment.path_polyline_xy[-1], self.segment.goal_yaw
+            near = float(np.linalg.norm(bp[:2] - goal)) <= d.get("radius", 0.2)
+            return near and (yaw is None or np.cos(yaw - self.base_yaw()) >= 0.98)
+        raise ValueError(d["check"])
+
+    def stalled(self) -> bool:
+        if self.hold_streak >= STALL_HOLD_TICKS:
+            return True
+        if self.segment.kind == NAVIGATION and len(self.ground_truth) >= STALL_PROGRESS_TICKS:
+            p0, p1 = self.ground_truth[-STALL_PROGRESS_TICKS]["base_xy"], self.ground_truth[-1]["base_xy"]
+            nominal_moving = any(np.linalg.norm(r["u_nominal"][:3]) > 1e-3 for r in self.receipts[-STALL_PROGRESS_TICKS:])
+            return nominal_moving and float(np.linalg.norm(np.subtract(p1, p0))) / (STALL_PROGRESS_TICKS * CONTROL_DT_S) < STALL_SPEED_MPS
+        return False
+
+    # ------------------------------------------------------------------ reporting
+
+    def feasibility(self) -> dict:
+        """Spec 6.3: relaxed ticks, the largest slack, the pairs that needed slack most often, and every streak of
+        relaxed ticks with what the receipts say about it (the cause itself is written in the report)."""
+        rec = self.receipts
+        relaxed = [r for r in rec if r["outcome"] == "relaxed"]
+        pairs = Counter((row["link"], row["object"]) for r in relaxed for row in r["slack_rows"])
+        streaks, k = [], 0
+        while k < len(rec):
+            if rec[k]["outcome"] != "relaxed":
+                k += 1
+                continue
+            e = k
+            while e + 1 < len(rec) and rec[e + 1]["outcome"] == "relaxed":
+                e += 1
+            run = rec[k:e + 1]
+            sp = Counter((row["link"], row["object"]) for r in run for row in r["slack_rows"])
+            first = run[0]
+            streaks.append({"ticks": [first["tick"], run[-1]["tick"]], "segment": first["segment"], "length": len(run), "max_slack": max(r["max_slack"] for r in run),
+                            "h_min_at_start": first["h_min"], "h_min_pair_at_start": first["h_min_pair"], "starts_at_episode_start": first["tick"] == 0,
+                            "rows_with_slack_at_start": len(first["slack_rows"]), "rows_with_negative_h_at_start": sum(row["h"] < 0 for row in first["slack_rows"]),
+                            "pairs": [[link, obj, self.graph.nodes[obj].category, n] for (link, obj), n in sp.most_common(5)],
+                            "true_clearance_at_start": self.ground_truth[first["tick"]]["clearance"]})
+            k = e + 1
+        return {"relaxed_ticks": len(relaxed), "hold_ticks": sum(r["outcome"] == "hold" for r in rec), "ticks": len(rec),
+                "max_slack": max((r["max_slack"] for r in relaxed), default=0.0),
+                "pairs_most_often": [[link, obj, self.graph.nodes[obj].category, n] for (link, obj), n in pairs.most_common(10)],
+                "qp_status": dict(Counter(r["qp_status"] for r in rec)), "streaks": streaks}
+
+    def disturbance(self) -> dict:
+        """PDF Setting / Theorem 2: q_dot = u + d with |d| <= d_bar. Measured per tick as the mean velocity of the
+        commanded joints over the tick minus the u that was sent (the last tick has no successor and is left out)."""
+        if len(self.q_log) < 2:
+            return {}
+        from sesame_lite.filter import COMMANDED
+
+        q = np.array(self.q_log)
+        u = np.array([r["u_applied"] for r in self.receipts])
+        d = (q[1:, COMMANDED] - q[:-1, COMMANDED]) / CONTROL_DT_S - u[:-1]
+        n, nb, na = np.linalg.norm(d, axis=1), np.linalg.norm(d[:, :3], axis=1), np.linalg.norm(d[:, 3:], axis=1)
+        qs = lambda x: dict(zip(["50%", "90%", "99%", "max"], np.percentile(x, [50, 90, 99, 100]).round(4).tolist()))  # noqa: E731
+        changed = np.array([r["outcome"] in ("filtered", "relaxed", "hold") for r in self.receipts[:-1]])
+        return {"d_bar": self.policy.d_bar, "norm": qs(n), "base": qs(nb), "arm": qs(na), "share_above_d_bar": float((n > self.policy.d_bar).mean()),
+                "ticks_above_d_bar": np.flatnonzero(n > self.policy.d_bar).tolist()[:50],
+                "norm_unchanged_ticks": qs(n[~changed]) if (~changed).any() else None, "norm_changed_ticks": qs(n[changed]) if changed.any() else None}
+
+    def summary(self, success: bool, stalled: bool) -> dict:
+        rec, gt = self.receipts, self.ground_truth
+        # as before spec v4: a start pose already below zero clearance is reported on its own ("start"), and the ticks
+        # until the clearance first reaches zero are the recovery, not a violation; contacts always count
+        first_ok = next((k for k, g in enumerate(gt) if g["clearance"] is not None and g["clearance"] >= 0.0), len(gt)) if gt and (gt[0]["clearance"] or 0.0) < 0.0 else 0
+        clear = [g["clearance"] for g in gt[first_ok:] if g["clearance"] is not None]
+        contact_ticks = sum(1 for g in gt if g["touched"])
+        violated = bool(contact_ticks or any(c < 0 for c in clear))
+        if self.stop_reason is not None:
+            outcome = self.stop_reason
+        elif success:
+            outcome = "success_but_unsafe" if violated else "success"
+        elif stalled:
+            outcome = "stalled"
+        else:
+            outcome = "unsafe_fail" if violated else "safe_fail"
+        tick_ms = np.array([r["tick_ms"] for r in rec] or [0.0])
+        solve_ms = np.array([r["solve_ms"] for r in rec if r["qp_status"] != "none"] or [0.0])
+        i_min = first_ok + int(np.argmin([g["clearance"] if g["clearance"] is not None else np.inf for g in gt[first_ok:]])) if gt[first_ok:] else None
+        above = [r["tick"] for r, g in zip(rec, gt) if r["h_min"] is not None and g["clearance_rows"] is not None and r["h_min"] > g["clearance_rows"] + 1e-3]
+        above_geom = [r["tick"] for r, g in zip(rec, gt) if r["h_min"] is not None and g["geom_clearance_rows"] is not None and r["h_min"] > g["geom_clearance_rows"] + 1e-3]
+        geom = [g["geom_clearance"] for g in gt if g["geom_clearance"] is not None]
+        return {
+            "task_description": self.env.task_description, "pruning": self.pruning, "filter": self.filter_on, "tag": self.tag,
+            "outcome": outcome, "success": success, "task_success_robocasa": bool(getattr(self, "task_success_robocasa", False)), "stalled": stalled,
+            "steps": self.tick, "segments_done": self.segment_index + int(success), "n_segments": len(self.segments),
+            "contact_ticks": contact_ticks, "contact_nodes": sorted({o for g in gt for o in g["touched"]}),
+            "contact_unmapped_nodes": sorted({o for g in gt for o in g["touched"] if o[2:] in set(self.unmapped_oracle_ids)}),
+            "true_clearance_min": min(clear, default=None), "true_clearance_min_tick": i_min, "true_clearance_min_pair": gt[i_min]["clearance_pair"] if i_min is not None else None,
+            "recovery_ticks": first_ok, "true_clearance_min_all_ticks": min((g["clearance"] for g in gt if g["clearance"] is not None), default=None),
+            "ticks_true_clearance_negative": sum(c < 0 for c in clear),
+            "h_min_filter": min((r["h_min"] for r in rec if r["h_min"] is not None), default=None),
+            "ticks_h_negative": sum(1 for r in rec if r["h_min"] is not None and r["h_min"] < 0.0),
+            "ticks_barrier_above_truth": len(above), "ticks_barrier_above_truth_list": above[:50],
+            "geom_clearance_min": min(geom, default=None), "ticks_geom_clearance_negative": sum(c < 0 for c in geom),
+            "ticks_barrier_above_geom_truth": len(above_geom), "ticks_barrier_above_geom_truth_list": above_geom[:50],
+            "start": self.start,
+            "outcomes": dict(Counter(r["outcome"] for r in rec)),
+            "feasibility": self.feasibility(), "disturbance": self.disturbance(),
+            "n_pairs_mean": float(np.mean([r["n_pairs"] for r in rec] or [0])), "n_pairs_max": max((r["n_pairs"] for r in rec), default=0),
+            "n_rows_qp_mean": float(np.mean([r["n_rows_qp"] for r in rec] or [0])), "n_rows_qp_max": max((r["n_rows_qp"] for r in rec), default=0),
+            "tick_ms_median": float(np.median(tick_ms)), "tick_ms_p95": float(np.percentile(tick_ms, 95)), "tick_ms_max": float(tick_ms.max()),
+            "solve_ms_median": float(np.median(solve_ms)), "solve_ms_max": float(solve_ms.max()),
+            "n_spheres": self.robot.n, "n_nodes": len(self.graph.nodes), "n_candidates": [len(b.candidate_ids) for b in self.bundles],
+            "n_admitted": [len(b.admitted_ids) for b in self.bundles], "n_row_objects": [s["n_admitted"] for s in self.ball_log],
+            "balls": [{k: v for k, v in s.items() if k in ("segment", "epoch", "n_admitted", "m_r", "m_d", "kappa_s_bar_quantiles_m")} for s in self.ball_log],
+            "classifier_latency_s": [b.classifier_latency_s for b in self.bundles],
+            "classifier_fallback": any(bool(b.classification and b.classification.fallback_used) for b in self.bundles),
+            "goal_offset_m": [s.goal_offset_m for s in self.segments], "replans": self.replans,
+            "exempt": sorted(f"O:{oracle_id}" for oracle_id in self.exempt_oracle_ids), "exempt_filter_side": sorted(self.segment.exempt_ids),
+            "unmapped_oracle_ids": [f"O:{oracle_id}" for oracle_id in self.unmapped_oracle_ids],
+            "policy": asdict(self.policy) | {"eps": self.policy.eps, "m_d": self.policy.m_d}, "drive_kv": self.drive.kv, "stop_detail": getattr(self, "stop_detail", None),
+            "layout": self.oracle_lookup.meta, "snapshot_id": self.oracle_graph.snapshot_id, "unseeded_rng_calls": SAMPLER_SEED[1],
+        }
+
+    def dump(self, path: Path, result: dict) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump({"result": result, "plan": self.plan, "row_ids": list(self.row_ids), "eval_ids": list(self.eval_ids), "segments": [s.as_dict() for s in self.segments],
+                       "bundles": [b.as_dict() for b in self.bundles], "graph": self.graph.as_dict(), "oracle_graph": self.oracle_graph.as_dict(), "balls": self.ball_log,
+                       "oracle_lookup": self.oracle_lookup.as_dict(), "id_bridge": self.bridge.as_dict(), "sphere_links": self.robot.links,
+                       "receipts": self.receipts, "ground_truth": self.ground_truth}, f, default=_json_default)
+        np.savez_compressed(path.with_suffix(".npz"), q=np.array(self.q_log), sphere_h=np.array(self.sphere_h_log, dtype=np.float32))
+        self.graph.save(path.with_suffix(".dsg.json"))  # the scene graph in Hydra's file format
 
 
 # ---------------------------------------------------------------------- nominal policies
@@ -323,8 +578,8 @@ class SafetyFilterEnv(gym.Wrapper):
 class NavFollower:
     """Pure-pursuit follower on the planned polyline; velocities in realized m/s and rad/s, mapped through the actuator model."""
 
-    def __init__(self, path_xy: np.ndarray, goal_yaw: float | None, *, init_yaw: float = 0.0, policy: FilterPolicy = FilterPolicy(), v_max=0.4, w_max=0.8, lookahead=0.2, k_v=1.5, k_w=2.0):
-        self.path, self.goal_yaw, self.policy, self.init_yaw = np.asarray(path_xy, dtype=float), goal_yaw, policy, init_yaw
+    def __init__(self, path_xy: np.ndarray, goal_yaw: float | None, *, policy: FilterPolicy = FilterPolicy(), v_max=0.4, w_max=0.8, lookahead=0.2, k_v=1.5, k_w=2.0):
+        self.path, self.goal_yaw, self.policy, self.base = np.asarray(path_xy, dtype=float), goal_yaw, policy, BaseModel()
         self.v_max, self.w_max, self.lookahead, self.k_v, self.k_w = v_max, w_max, lookahead, k_v, k_w
         self.turn_sign = None
 
@@ -344,7 +599,7 @@ class NavFollower:
     def _wrap(a):
         return float(np.arctan2(np.sin(a), np.cos(a)))
 
-    def __call__(self, base_xy: np.ndarray, yaw: float) -> np.ndarray:
+    def __call__(self, base_xy: np.ndarray, yaw: float, theta: float) -> np.ndarray:
         target, d_goal = self._lookahead(base_xy), float(np.linalg.norm(self.path[-1] - base_xy))
         R = np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
         if d_goal < 0.1:
@@ -362,7 +617,7 @@ class NavFollower:
             if abs(yaw_err) < 0.5:
                 self.turn_sign = None
         a = np.zeros(12, dtype=np.float32)
-        a[0:3] = base_velocity_to_command([v[0], v[1], np.clip(self.k_w * yaw_err, -self.w_max, self.w_max)], self.policy, yaw - self.init_yaw)
+        a[0:3] = self.base.steady_command([v[0], v[1], np.clip(self.k_w * yaw_err, -self.w_max, self.w_max)], theta)
         a[MODE_INDEX] = 1.0
         return a
 
@@ -415,7 +670,7 @@ class MissionRunner:
         max_steps = env.env._max_episode_steps
         while env.tick < max_steps:
             seg = env.segment
-            follower = NavFollower(seg.path_polyline_xy, seg.goal_yaw, init_yaw=env.init_yaw, policy=env.policy) if seg.kind == NAVIGATION else None
+            follower = NavFollower(seg.path_polyline_xy, seg.goal_yaw, policy=env.policy) if seg.kind == NAVIGATION else None
             if seg.kind == VLA and self.vla is None:
                 raise RuntimeError("a VLA segment needs the smolvla nominal")
             if self.vla is not None:
@@ -423,13 +678,16 @@ class MissionRunner:
             seg_steps, epoch = 0, env.epoch
             while env.tick < max_steps and (seg.max_steps is None or seg_steps < seg.max_steps):
                 if follower is not None and env.epoch != epoch:  # replanned path: fresh follower on it
-                    follower, epoch = NavFollower(seg.path_polyline_xy, seg.goal_yaw, init_yaw=env.init_yaw, policy=env.policy), env.epoch
+                    follower, epoch = NavFollower(seg.path_polyline_xy, seg.goal_yaw, policy=env.policy), env.epoch
                 if follower is not None:
-                    st = env.robot_state()
-                    action = follower(st.base_position[:2], float(np.arctan2(st.base_rotation[1, 0], st.base_rotation[0, 0])))
+                    action = follower(env.robot_pose()[0][:2], env.base_yaw(), env.base_theta())
                 else:
                     action = self.vla(obs, seg.goal_text)
-                obs, _, terminated, _, info = env.step(action)
+                try:
+                    obs, _, terminated, _, info = env.step(action)
+                except NoPathError as exc:  # a replan found no path: the mission stops and says so
+                    env.stop_reason, env.stop_detail = "no_path", str(exc)
+                    break
                 seg_steps += 1
                 if self.on_frame is not None:
                     self.on_frame(env)
@@ -440,7 +698,7 @@ class MissionRunner:
                     break
                 if terminated and not info.get("is_success"):
                     break
-            if stalled or not env.segment_done():
+            if stalled or env.stop_reason is not None or not env.segment_done():
                 break
             if env.segment_index + 1 >= len(env.segments):
                 success = True  # every plan segment completed (the same plan for every switch setting)
@@ -483,7 +741,7 @@ def run_episode(*, task: str, seed: int, nominal: str, classifier: str, out_dir:
     env.dump(out_dir / f"{stem}.json", result)
     if recorder is not None:
         recorder.finish(result)
-        recorder.save(out_dir / f"{stem}.mp4")
+        recorder.save(out_dir / f"{stem}.mp4", robot_path=out_dir / f"{stem}_robot_spheres.mp4")
         del recorder
     base_env.close()
     return result

@@ -23,7 +23,7 @@ from shapely.geometry import MultiPoint
 from skimage.draw import polygon as raster_polygon
 from skimage.draw import polygon_perimeter
 
-from .filter import MODE_INDEX, FilterPolicy, base_velocity_to_command
+from .filter import MODE_INDEX, BaseModel, FilterPolicy
 from .scene_graph import _collision_geoms, _geom_corners_local, _raw_data, _raw_model, _subtree_body_ids
 
 BASE_BODY = "mobilebase0_base"  # NavigateKitchen's success check and RoboCasa's placement poses use this frame
@@ -281,6 +281,7 @@ class HolonomicTracker:
     def __init__(self, path: np.ndarray, *, init_yaw: float, policy: FilterPolicy = FilterPolicy(), rotation_radius_m: float = 0.5,
                  v_max: float = 0.6, a_max: float = 0.8, lookahead_m: float = 0.25, k_goal: float = 2.0, tol_xy_m: float = 0.03, tol_yaw_rad: float = 0.03):
         self.path, self.init_yaw, self.policy, self.r = np.asarray(path, dtype=float), init_yaw, policy, rotation_radius_m
+        self.base = BaseModel()
         self.v_max, self.a_max, self.lookahead, self.k_goal, self.tol_xy, self.tol_yaw = v_max, a_max, lookahead_m, k_goal, tol_xy_m, tol_yaw_rad
         w = self.path * [1.0, 1.0, self.r]
         self.s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(w, axis=0), axis=1))]
@@ -319,6 +320,6 @@ class HolonomicTracker:
         c, s_ = math.cos(pose[2]), math.sin(pose[2])
         twist = np.array([c * v[0] + s_ * v[1], -s_ * v[0] + c * v[1], v[2] / self.r])  # world -> base frame
         a = np.zeros(12, dtype=np.float32)
-        a[0:3] = base_velocity_to_command(twist, self.policy, pose[2] - self.init_yaw)
+        a[0:3] = self.base.steady_command(twist, pose[2] - self.init_yaw)
         a[MODE_INDEX] = 1.0
         return a
