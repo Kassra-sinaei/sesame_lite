@@ -1,6 +1,6 @@
 """Build (or check) the Hydra maps of one mission scene in their own process: the reset does the mapping passes.
 
-    MUJOCO_GL=egl .venv/bin/python -s scripts/map_scene.py --plan plans/nav_mats.json --seed 100
+    MUJOCO_GL=egl .venv/bin/python -s scripts/map_scene.py --plan plans/nav_clutter.json --seed 100
 
 Writes outputs/maps/<mission>_s<seed>_<n>/ (n = 0 at reset, 1 after the injections) unless the cache exists.
 ``plan_mission.py`` and ``run_episode*.py`` with ``--graph-source hydra`` then load the same maps, so node ids agree

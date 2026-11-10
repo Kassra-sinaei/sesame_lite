@@ -1,6 +1,6 @@
 """REPORT.md for one matched-seed demo: one column per switch setting, filter evidence, semantic-prunability table.
 
-    python scripts/make_report.py outputs/demo_nav --task NavigateKitchenMats --seed 0 --tags sesame nofilter
+    python scripts/make_report.py outputs/demo_nav --task NavigateKitchenClutter --seed 0 --tags sesame nofilter
 """
 
 import argparse

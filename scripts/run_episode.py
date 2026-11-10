@@ -1,6 +1,6 @@
 """Run one (task, seed) in one process (the kitchen is rebuilt from the seed) and write receipts (+ video).
 
-    python scripts/run_episode.py --plan plans/nav_mats.json --seed 0 --classifier qwen \
+    python scripts/run_episode.py --plan plans/nav_clutter.json --seed 0 --classifier qwen \
         --env-kwargs '{"layout_ids": [46], "style_ids": [46], "clutter_mode": 1}' --video
 """
 

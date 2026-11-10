@@ -1,6 +1,6 @@
 """Publication figures for one matched-seed demo, from the episode receipts only.
 
-    python scripts/make_figures.py outputs/demo_nav --task NavigateKitchenMats --seed 0 --tags sesame nofilter
+    python scripts/make_figures.py outputs/demo_nav --task NavigateKitchenClutter --seed 0 --tags sesame nofilter
 
 Writes, next to the receipts:
   fig_<task>_s<seed>_query.pdf       3DSG query of the SESAME-3D run (single column): every part's footprint coloured by its
@@ -111,8 +111,8 @@ def annotate_injections(ax, ep):
             continue
         c = np.asarray(n["center"][:2])
         name = n["category"].replace("_", " ")
-        ax.annotate(f"{name}\n({inj['ground_truth']})", c, xytext=(0, -16 if inj["ground_truth"] == "passable" else -18), textcoords="offset points",
-                    ha="center", va="top", fontsize=6, color="#2E9E5B" if inj["ground_truth"] == "passable" else "#C0392B",
+        ax.annotate(name, c, xytext=(0, -16), textcoords="offset points",
+                    ha="center", va="top", fontsize=6, color="#C0392B",
                     arrowprops=dict(arrowstyle="-", lw=0.4, color="#555555"), zorder=7)
 
 

@@ -61,6 +61,7 @@ class FilterPolicy:
     issf_eps: float = 0.025  # eps = d_bar / 2: the ISSf row term eps |grad_u h|^2 (makes m_d + the rest offset smallest)
     delta: float = 0.01  # risk of the confidence boxes, split over the admitted nodes, then over six faces
     smooth_tau_m: float = 0.005  # temperature of the smooth point-box barrier
+    m_r_voxels: float = 1.0  # discretisation margin m_r of the confidence faces, in map voxels: the smallest of 1/4, 1/2, 1 voxel leaving no coverage failure on the design scene (to be confirmed by Kasra)
     clearance_margin_m: float = 0.001
     uncertainty_margin_m: float = 0.0  # replaced by the per-face confidence box (kappa*sigma + m_r per face)
     goal_standoff_m: float = 0.065  # base goal clearance from the graph's boxes (the value used before the ISSf rows)
@@ -130,6 +131,7 @@ class RobotState:
     yaw_axis_xy: np.ndarray = field(default_factory=lambda: np.zeros(2))  # yaw joint axis in the base frame, relative to base_position
     arm_points: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))  # world centres of the arm-link spheres
     command_theta: float = 0.0  # yaw - yaw at episode start (frame of RoboCasa's base joints)
+    base_locked: bool = False  # manipulation segment after the base was cleared: base velocity held at zero
 
     @property
     def eef_offset_base(self) -> np.ndarray:
@@ -153,6 +155,7 @@ class FilterReceipt:
     correction_norm: float
     rows: list[dict] = field(default_factory=list)
     active_rows: list[tuple] = field(default_factory=list)  # (obstacle id, protected body, h, nearest face index)
+    rows_without_free_command: list[str] = field(default_factory=list)  # rows left out of the QP: no free command moves them
 
     def as_dict(self) -> dict:
         d = dict(self.__dict__)
@@ -370,6 +373,8 @@ class PerRowFilter:
             fixed = slice(3, 6) if state.base_mode else slice(0, 3)
             lb[fixed] = u_nom[fixed]
             ub[fixed] = u_nom[fixed]
+        if state.base_locked:
+            lb[:3] = ub[:3] = 0.0
         return lb, ub
 
     # ----------------------------------------------------------------- main entry
@@ -390,6 +395,13 @@ class PerRowFilter:
         u_nom = self.nominal_velocity(action, state)
         lb, ub = self._bounds(state, u_nom)
         samples, G, b, nearest_faces = self.build_rows(state, fragments, base_rows_for=base_rows_for, eef_rows_for=eef_rows_for, speed_bound=None if passive else self.speed_bounds(state, lb, ub))
+        # a row that no free command can move (e.g. a base row while the base block is pinned) cannot be satisfied by the
+        # QP: it is left out (the tick is flagged in the receipt) instead of making the QP infeasible
+        free = (ub - lb) > 1e-12
+        moves = np.abs(G[:, free]).max(axis=1) > 1e-9 if G.shape[0] and np.any(free) else np.zeros(G.shape[0], dtype=bool)
+        without_free = [samples[i].constraint_id for i in np.flatnonzero(~moves)] if not passive else []
+        if not passive and G.shape[0]:
+            G, b = G[moves], b[moves]
         hs = [s.value for s in samples]
         h_min = min(hs) if hs else None
         h_min_row = samples[int(np.argmin(hs))].constraint_id if hs else None
@@ -463,5 +475,6 @@ class PerRowFilter:
             correction_norm=float(np.linalg.norm(u - u_nom)),
             rows=rows,
             active_rows=[(smp.obstacle_parent_id, smp.protected_id, float(smp.value), f) for smp, f in zip(samples, nearest_faces)],
+            rows_without_free_command=without_free,
         )
         return applied, receipt

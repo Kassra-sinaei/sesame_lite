@@ -1,8 +1,7 @@
 """RoboCasa task variants for the study (registered with robosuite on import).
 
-``NavigateKitchenMats``: NavigateKitchen plus flat floor objects the base may drive over (lightwheel
-placemats: 0.8 cm tall, the analog of the paper's doormat) and one object it must not (a flour bag).
-RoboCasa cannot sample objects on the floor, so they are spawned on a counter and moved onto the
+``NavigateKitchenClutter``: NavigateKitchen plus one floor object beside the planned path that the base must not
+touch (a flour bag). RoboCasa cannot sample objects on the floor, so it is spawned on a counter and moved next to the
 planned path after reset (``place_on_path``), before the 3DSG is captured.
 
 ``PickPlaceSinkToCounterFar``: RoboCasa's PickPlaceSinkToCounter (same objects, same success check), but the robot
@@ -19,21 +18,17 @@ from robocasa.environments.kitchen.kitchen import FixtureType
 
 from sesame_lite.scene_graph import _raw_data, _raw_model
 
-FLOOR_OBJECTS = [  # name, category, passable in ground truth
-    ("mat_1", "placemat", True),
-    ("mat_2", "placemat", True),
-    ("bag_1", "flour_bag", False),
-]
-PATH_FRACTIONS = {"mat_1": 0.35, "mat_2": 0.65, "bag_1": 0.5}
-PATH_OFFSETS_M = {"mat_1": 0.0, "mat_2": 0.0, "bag_1": 0.45}  # lateral offset: the bag sits beside the path, within the corridor
+FLOOR_OBJECTS = [("bag_1", "flour_bag")]  # name, category
+PATH_FRACTIONS = {"bag_1": 0.5}
+PATH_OFFSETS_M = {"bag_1": 0.45}  # lateral offset: the bag sits beside the path, within the corridor
 
 
-class NavigateKitchenMats(NavigateKitchen):
+class NavigateKitchenClutter(NavigateKitchen):
     def _get_obj_cfgs(self):
         counter = self.get_fixture(FixtureType.COUNTER)
         return [
             dict(name=name, obj_groups=category, graspable=False, init_robot_here=False, placement=dict(fixture=counter, size=(0.6, 0.4), pos=(None, -1.0), offset=(0.0, 0.0)))
-            for name, category, _ in FLOOR_OBJECTS
+            for name, category in FLOOR_OBJECTS
         ]
 
 
@@ -51,11 +46,11 @@ class PickPlaceSinkToCounterFar(PickPlaceSinkToCounter):
 
 
 def place_on_path(rs_env, path_xy: np.ndarray) -> None:
-    """Drop the floor objects on the planned base path (free-joint teleport + forward), flat on the floor."""
+    """Drop the floor objects next to the planned base path (free-joint teleport + forward), upright on the floor."""
     model, data = _raw_model(rs_env.sim), _raw_data(rs_env.sim)
     seg = np.diff(path_xy, axis=0)
     cum = np.concatenate([[0.0], np.cumsum(np.linalg.norm(seg, axis=1))])
-    for name, _, _ in FLOOR_OBJECTS:
+    for name, _ in FLOOR_OBJECTS:
         if name not in rs_env.objects:
             continue
         s = PATH_FRACTIONS[name] * cum[-1]
@@ -74,7 +69,3 @@ def place_on_path(rs_env, path_xy: np.ndarray) -> None:
         data.qvel[int(model.jnt_dofadr[jid]) : int(model.jnt_dofadr[jid]) + 6] = 0.0
     mujoco.mj_forward(model, data)
 
-
-def ground_truth_passable() -> set[str]:
-    """Oracle names of the floor objects the base may drive over (map to graph nodes with OracleLookup.node)."""
-    return {f"object:{name}" for name, _, passable in FLOOR_OBJECTS if passable}

@@ -5,9 +5,12 @@
     box face k      ->  sigma_k = max(|a_k . n|, 0.2) s   at the face's supporting vertex (the outermost one along a_k)
 
 The face offsets b_hat_k = max over the node's vertices of a_k . p reproduce Hydra's own box (checked when the faces
-are written). ``write_faces`` also stores, for evaluation only, whether each face was observed: whether a voxel with
-weight > 0 lies within 1.5 voxels of the true supporting point (the outermost point of the instance's visual geoms
-along a_k). The filter never reads that flag.
+are written). Each face also gets two flags:
+  viewed_within_60  map side: some mapping frame saw the face's supporting vertex (a pixel within one of it carries the
+                    node's label at the vertex's depth) from within 60 degrees of the face normal; best_view_angle_deg
+  own_near_truth    evaluation only: a vertex of this node lies within 1.5 voxels of the true supporting point (the
+                    outermost point of the instance's visual geoms along a_k)
+and ``observed`` = both. A face that is not observed gets no claim in the coverage check. The filter reads neither.
 """
 
 from __future__ import annotations
@@ -182,8 +185,38 @@ def instance_visual_geoms(model, bodies: set[int]) -> list[int]:
 # --------------------------------------------------------------------------- faces.json
 
 
-def write_faces(map_dir: Path, rs_env, oracle_graph, lookup) -> dict:
-    """faces.json for one cached Hydra map: per object node its category, box and six faces."""
+def best_view_angles(points: np.ndarray, normals: np.ndarray, label: int, views: list, params) -> np.ndarray:
+    """Per point (a face's supporting vertex with its face normal): the smallest angle, over the mapping frames that saw
+    it, between the face normal and the direction to the camera (inf if no frame saw it). A frame saw the point if it
+    projects into the image within range and a pixel within one of it has the node's label and a depth within
+    3 sigma_z + one voxel of the point's depth (not hidden behind something else)."""
+    best = np.full(len(points), np.inf)
+    if not views:
+        return best
+    pos = np.array([v[0] for v in views])
+    Rs = np.array([v[1] for v in views])
+    for i, (p, a) in enumerate(zip(points, normals)):
+        pc = np.einsum("nji,nj->ni", Rs, p[None, :] - pos)  # optical frame: R^T (p - pos)
+        z = pc[:, 2]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            u = np.round(params.fx * pc[:, 0] / z + params.cx).astype(np.int64)
+            v = np.round(params.fy * pc[:, 1] / z + params.cy).astype(np.int64)
+        ok = (z > params.min_range_m) & (z < params.max_range_m) & (u >= 1) & (u < params.width - 1) & (v >= 1) & (v < params.height - 1)
+        to_cam = pos - p
+        cosang = to_cam @ a / np.maximum(np.linalg.norm(to_cam, axis=1), 1e-9)
+        for n in np.flatnonzero(ok & (cosang > 0)):
+            depth, labels = views[n][2], views[n][3]
+            win = (slice(v[n] - 1, v[n] + 2), slice(u[n] - 1, u[n] + 2))
+            tol = 3 * params.depth_noise_c * z[n] ** 2 + params.voxel_size_m
+            hit = (labels[win] == label) & (np.abs(depth[win].astype(np.float32) - z[n]) <= tol)
+            if np.any(hit):
+                best[i] = min(best[i], float(np.degrees(np.arccos(np.clip(cosang[n], -1, 1)))))
+    return best
+
+
+def write_faces(map_dir: Path, rs_env, oracle_graph, lookup, *, views: list | None = None, params=None) -> dict:
+    """faces.json for one cached Hydra map: per object node its category, box and six faces (see the module docstring).
+    ``views`` are the mapping frames (pose, depth, labels); without them the view angles are unknown (not observed)."""
     meta = json.loads((map_dir / "meta.json").read_text())
     sigma0_sq = meta["params"]["sigma0_sq"]
     graph = dsg.DynamicSceneGraph.load(str(map_dir / "dsg.json"))
@@ -220,13 +253,9 @@ def write_faces(map_dir: Path, rs_env, oracle_graph, lookup) -> dict:
         bodies = set().union(*(lookup.bodies[o] for o in oracle_ids)) if oracle_ids else set()
         truth_pts = visual_support(model, data, instance_visual_geoms(model, bodies), A) if bodies else np.full((6, 3), np.nan)
         truth = np.einsum("ij,ij->i", A, truth_pts)
-        rows = [grid.lookup(np.round(grid.lattice(truth_pts) + d).astype(np.int64)) for d in np.array([(i, j, k) for i in (-1, 0, 1) for j in (-1, 0, 1) for k in (-1, 0, 1)])]
-        observed = []
-        for f in range(6):
-            cand = [r[f] for r in rows if r[f] >= 0]
-            pts = (grid.index[cand] + 0.5) * grid.voxel_size if cand else np.zeros((0, 3))
-            near = bool(len(pts)) and bool(np.any(np.linalg.norm(pts - truth_pts[f], axis=1) <= OBSERVED_RADIUS_VOXELS * grid.voxel_size))
-            observed.append(bool(near and np.isfinite(truth[f])))
+        own_near = [bool(np.isfinite(truth[f]) and np.min(np.linalg.norm(P - truth_pts[f], axis=1)) <= OBSERVED_RADIUS_VOXELS * grid.voxel_size) for f in range(6)]
+        angle = best_view_angles(P[k_sup], A, label, views or [], params) if params is not None else np.full(6, np.inf)
+        max_angle = params.observed_view_angle_deg if params is not None else 0.0
         nodes.append({
             "node_id": str(node.id),
             "label": label,
@@ -234,8 +263,10 @@ def write_faces(map_dir: Path, rs_env, oracle_graph, lookup) -> dict:
             "n_vertices": int(len(conn)),
             "box": {"center": np.round(np.asarray(bb.world_P_center, dtype=float), 5).tolist(), "dimensions": np.round(np.asarray(bb.dimensions, dtype=float), 5).tolist(), "rotation": np.round(R, 6).tolist()},
             "faces": [{"normal": np.round(A[f], 6).tolist(), "offset": round(float(b_hat[f]), 5), "sigma": None if not np.isfinite(sigma[f]) else round(float(sigma[f]), 6),
-                       "support_vertex": np.round(P[k_sup[f]], 5).tolist(), "vertex_std_source": ["grid_edge", "bound", "none"][int(how[f])], "observed": observed[f],
-                       "truth": None if not np.isfinite(truth[f]) else round(float(truth[f]), 5)} for f in range(6)],
+                       "support_vertex": np.round(P[k_sup[f]], 5).tolist(), "vertex_std_source": ["grid_edge", "bound", "none"][int(how[f])],
+                       "best_view_angle_deg": None if not np.isfinite(angle[f]) else round(float(angle[f]), 1), "viewed_within_60": bool(angle[f] <= max_angle),
+                       "own_near_truth": own_near[f], "observed": bool(own_near[f] and angle[f] <= max_angle),
+                       "truth": None if not np.isfinite(truth[f]) else round(float(truth[f]), 5), "truth_point": None if not np.isfinite(truth[f]) else np.round(truth_pts[f], 5).tolist()} for f in range(6)],
         })
     out = {"sigma0_sq": sigma0_sq, "vertex_std_source_counts": {"grid_edge": int(how_counts[0]), "bound": int(how_counts[1]), "none": int(how_counts[2])},
            "max_box_reproduction_error_m": box_err, "nodes": nodes}

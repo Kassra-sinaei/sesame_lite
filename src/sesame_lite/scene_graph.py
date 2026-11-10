@@ -203,12 +203,12 @@ class SceneGraph:
     def fragments(self) -> dict[str, OrientedBoxFragment]:
         return {nid: n.fragment() for nid, n in self.nodes.items()}
 
-    def with_confidence(self, *, kappa: float, m_d: float) -> "SceneGraph":
+    def with_confidence(self, *, kappa: float, m_d: float, m_r_voxels: float = 0.25) -> "SceneGraph":
         """A copy whose boxes are the confidence boxes (spec 5.1): every face pushed out by kappa*sigma + m_r + m_d,
-        m_r = voxel_size / 4. A node without faces (the oracle) has sigma = 0 and m_r = 0: only m_d is added."""
+        m_r = m_r_voxels * voxel_size. A node without faces (the oracle) has sigma = 0 and m_r = 0: only m_d is added."""
         from sesame_lite.uncertainty import box_axes, box_from_offsets
 
-        m_r = self.voxel_size_m / 4.0
+        m_r = self.voxel_size_m * m_r_voxels
         out = copy.copy(self)
         out.nodes = {}
         for nid, n in self.nodes.items():

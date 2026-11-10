@@ -1,6 +1,6 @@
 """Phase 1 checks of the Hydra map of one scene (spec 4.8), written next to the map: check.md, check.json, face_sigma.pdf.
 
-    MUJOCO_GL=egl .venv/bin/python -s scripts/check_map.py --plan plans/nav_mats.json --seed 100
+    MUJOCO_GL=egl .venv/bin/python -s scripts/check_map.py --plan plans/nav_clutter.json --seed 100
 
 The scene is rebuilt from the seed and the cached maps are loaded (nothing is mapped again). Ground truth is used
 here, for evaluation only:
@@ -65,7 +65,6 @@ hydra, oracle, bridge, labels = env.base_graph, env.oracle_graph, env.bridge, en
 oracle_name = {v: k for k, v in env.oracle_lookup.node_of.items()}
 faces_file = json.loads((out_dir / "faces.json").read_text())
 voxel = hydra.voxel_size_m
-m_r = voxel / 4
 n_adm = args.n_admitted or len(hydra.nodes)
 kap = kappa(args.delta, n_adm)
 kap1 = kappa(args.delta, 1)
@@ -188,66 +187,77 @@ report += ["## Oriented boxes", "",
            "- Free objects tilted over 3 deg: " + (", ".join(f"H:{h} ({t} deg, {hydra.nodes[h].category})" for h, t in summary['obb']['objects_tilted_over_3_deg']) or "none") + ".", ""]
 
 # ------------------------------------------------------------------ 3. coverage
-records, unobserved, exceed = [], 0, []
+FACE = ["+x", "-x", "+y", "-y", "+z", "-z"]
+records, unobserved = [], []
 single = {o: v[0] for o, v in bridge.hydra_of.items() if len(v) == 1}
 faces_by_node = {n["node_id"]: n for n in faces_file["nodes"]}
 for oracle_id, hydra_id in single.items():
     for k, f in enumerate(faces_by_node[hydra_id]["faces"]):
+        rec = {"oracle_id": oracle_id, "hydra_id": hydra_id, "face": k, "category": hydra.nodes[hydra_id].category,
+               "own_near_truth": f["own_near_truth"], "best_view_angle_deg": f["best_view_angle_deg"]}
         if not f["observed"] or f["truth"] is None:
-            unobserved += 1
+            unobserved.append(rec)
             continue
-        e, sigma = f["truth"] - f["offset"], f["sigma"]
-        rec = {"oracle_id": oracle_id, "hydra_id": hydra_id, "face": k, "category": hydra.nodes[hydra_id].category, "e_m": e, "sigma_m": sigma}
+        rec.update(e_m=f["truth"] - f["offset"], sigma_m=f["sigma"])
         records.append(rec)
-        if e > kap * sigma:
-            exceed.append(rec)
 e = np.array([r["e_m"] for r in records])
 sig = np.array([r["sigma_m"] for r in records])
 z = e / sig
+# m_r sweep (spec item 5); "nearly none" fixed before the run: at most NEARLY_NONE of the observed faces
+NEARLY_NONE = 0.02
+M_R_FACTORS = (0.25, 0.5, 1.0)
+sweep = {f: int(np.sum(e > kap * sig + f * voxel)) for f in M_R_FACTORS}
+passing = [f for f in M_R_FACTORS if sweep[f] <= NEARLY_NONE * len(records)]
+chosen = passing[0] if passing else None
+m_r = (chosen if chosen is not None else M_R_FACTORS[-1]) * voxel
 n_over = int(np.sum(e > kap * sig))
-n_over_mr = int(np.sum(e > kap * sig + m_r))
-n_over1 = int(np.sum(e > kap1 * sig + m_r))
-summary["coverage"] = {"kappa": kap, "n_admitted_for_kappa": n_adm, "kappa_single_object": kap1, "m_r_m": m_r, "observed_faces": len(records), "unobserved_faces": unobserved,
-                       "e_mean_m": float(e.mean()), "e_std_m": float(e.std()), "e_over_sigma_quantiles": dict(zip(["1%", "10%", "50%", "90%", "99%", "max"], np.percentile(z, [1, 10, 50, 90, 99, 100]).round(2).tolist())),
-                       "faces_e_gt_kappa_sigma": n_over, "faces_e_gt_kappa_sigma_plus_m_r": n_over_mr, "faces_e_gt_kappa1_sigma_plus_m_r": n_over1}
+reasons = {"no own vertex near the true supporting point": sum(not r["own_near_truth"] for r in unobserved),
+           "never viewed within 60 deg of the normal": sum(r["own_near_truth"] and not (r["best_view_angle_deg"] is not None and r["best_view_angle_deg"] <= 60) for r in unobserved)}
+summary["coverage"] = {"kappa": kap, "n_admitted_for_kappa": n_adm, "kappa_single_object": kap1, "observed_faces": len(records), "unobserved_faces": len(unobserved),
+                       "unobserved_reasons": reasons, "e_mean_m": float(e.mean()), "e_std_m": float(e.std()),
+                       "e_over_sigma_quantiles": dict(zip(["1%", "10%", "50%", "90%", "99%", "max"], np.percentile(z, [1, 10, 50, 90, 99, 100]).round(2).tolist())),
+                       "faces_e_gt_kappa_sigma": n_over, "m_r_sweep": {f"{f} voxel": n for f, n in sweep.items()}, "nearly_none_fraction": NEARLY_NONE,
+                       "chosen_m_r_voxels": chosen, "m_r_m": m_r, "passed": chosen is not None}
 report += ["## 3. Coverage of the confidence faces", "",
-           f"Faces of instances with exactly one Hydra node ({len(single)} instances). Truth = the outermost point of the instance's visual geoms along the face normal; "
-           f"a face is observed if a voxel with w > 0 lies within 1.5 voxels of that point. e = truth - b_hat (positive: the true surface lies outside Hydra's box).", "",
-           f"- kappa = {kap:.2f} (delta = {args.delta} over {n_adm} nodes x 6 faces); single-object kappa = {kap1:.2f}. m_r = voxel/4 = {100 * m_r:.2f} cm.",
-           f"- Observed faces: {len(records)}; unobserved (counted separately, not covered): {unobserved}.",
+           f"Faces of instances with exactly one Hydra node ({len(single)} instances). Truth = the outermost point of the instance's visual geoms along the face normal. "
+           "A face is **observed** only if (a) this Hydra node has mesh vertices within 1.5 voxels of the true supporting point, and (b) a mapping frame saw the "
+           "face's supporting vertex within 60 deg of the face normal. Unobserved faces get no claim. e = truth - b_hat (positive: the true surface lies outside Hydra's box).", "",
+           f"- kappa = {kap:.2f} (delta = {args.delta} over {n_adm} nodes x 6 faces); single-object kappa = {kap1:.2f}.",
+           f"- Observed faces: {len(records)}. Not observed (no claim): {len(unobserved)}: " + "; ".join(f"{k}: {v}" for k, v in reasons.items()) + ".",
            f"- e: mean {100 * e.mean():+.2f} cm, std {100 * e.std():.2f} cm, min {100 * e.min():+.2f} cm, max {100 * e.max():+.2f} cm.",
-           f"- sigma over these faces: median {1000 * np.median(sig):.2f} mm, 90 % {1000 * np.percentile(sig, 90):.2f} mm, max {1000 * sig.max():.2f} mm; kappa*sigma median {1000 * kap * np.median(sig):.2f} mm.",
+           f"- sigma: median {1000 * np.median(sig):.2f} mm, 90 % {1000 * np.percentile(sig, 90):.2f} mm, max {1000 * sig.max():.2f} mm; kappa*sigma median {1000 * kap * np.median(sig):.2f} mm.",
            "- e / sigma quantiles: " + ", ".join(f"{k} {v:+.2f}" for k, v in summary["coverage"]["e_over_sigma_quantiles"].items()) + ".",
-           f"- Faces with e > kappa*sigma: **{n_over}** of {len(records)}; with e > kappa*sigma + m_r: **{n_over_mr}**; with e > kappa_1*sigma + m_r (single-object kappa): {n_over1}.", ""]
-if exceed:
-    report += ["Every face with e > kappa*sigma:", "", "| oracle | Hydra | category | face | e [cm] | sigma [mm] | kappa*sigma [mm] | e - kappa*sigma - m_r [cm] |", "|---|---|---|---|---|---|---|---|"]
-    for r in sorted(exceed, key=lambda r: -(r["e_m"] - kap * r["sigma_m"])):
-        report.append(f"| O:{r['oracle_id']} | H:{r['hydra_id']} | {r['category']} | {['+x', '-x', '+y', '-y', '+z', '-z'][r['face']]} | {100 * r['e_m']:+.2f} | {1000 * r['sigma_m']:.2f} | {1000 * kap * r['sigma_m']:.2f} | {100 * (r['e_m'] - kap * r['sigma_m'] - m_r):+.2f} |")
+           f"- Faces with e > kappa*sigma: {n_over} of {len(records)}.", "",
+           f"m_r sweep (\"nearly none\" fixed before the run: at most {100 * NEARLY_NONE:.0f} % of the observed faces, i.e. {int(NEARLY_NONE * len(records))}):", "",
+           "| m_r | observed faces with e > kappa*sigma + m_r |", "|---|---|"] + [f"| {f} voxel = {100 * f * voxel:.2f} cm | {n} |" for f, n in sweep.items()] + ["",
+           f"**Chosen m_r: {chosen} voxel = {100 * m_r:.2f} cm.**" if chosen is not None else "**No m_r in the sweep leaves nearly none: the coverage check fails.**", ""]
+over = sorted([r for r in records if r["e_m"] > kap * r["sigma_m"] + m_r], key=lambda r: -(r["e_m"] - kap * r["sigma_m"]))
+if over:
+    report += [f"Every observed face with e > kappa*sigma + m_r (m_r = {100 * m_r:.2f} cm):", "",
+               "| oracle | Hydra | category | face | e [cm] | sigma [mm] | best view [deg] | e - kappa*sigma - m_r [cm] |", "|---|---|---|---|---|---|---|---|"]
+    for r in over:
+        report.append(f"| O:{r['oracle_id']} | H:{r['hydra_id']} | {r['category']} | {FACE[r['face']]} | {100 * r['e_m']:+.2f} | {1000 * r['sigma_m']:.2f} | {r['best_view_angle_deg']} | {100 * (r['e_m'] - kap * r['sigma_m'] - m_r):+.2f} |")
     report.append("")
-summary["coverage"]["exceedances"] = exceed
+report += ["Faces not observed (no claim):", "", "| Hydra | category | face | own vertex near truth | best view [deg] |", "|---|---|---|---|---|"]
+report += [f"| H:{r['hydra_id']} | {r['category']} | {FACE[r['face']]} | {'yes' if r['own_near_truth'] else 'no'} | {r['best_view_angle_deg'] if r['best_view_angle_deg'] is not None else 'never'} |" for r in unobserved] + [""]
+summary["coverage"]["exceedances"] = over
+summary["coverage"]["unobserved"] = unobserved
 
-# diagnostic split (does not change the check): was the instance's own surface reconstructed at the true extreme point?
+route = json.loads((out_dir / "meta.json").read_text())["route"]
+lv = route.get("large_vertical_surfaces", {})
+summary["route"] = {k: (len(v) if isinstance(v, list) else v) for k, v in lv.items()}
+report += ["## Mapping route and large vertical surfaces", "",
+           f"- Camera poses: {route['camera_poses']} ({route.get('targeted_poses', 0)} added so that every large vertical surface, >= 0.5 m^2, is seen within 45 deg of its normal).",
+           f"- Large vertical surfaces: {lv.get('faces')}; seen within 45 deg by the base route: {lv.get('seen_by_base_route')}; given an added view: {len(lv.get('given_a_view', []))}; "
+           f"no position sees them within 45 deg: {len(lv.get('not_reachable', []))}; hidden from every position (backs, outer wall faces): {len(lv.get('hidden', []))}.",
+           "- Added views: " + ("; ".join(lv.get("given_a_view", [])) or "none") + ".",
+           "- Not reachable within 45 deg: " + ("; ".join(lv.get("not_reachable", [])) or "none") + ".", ""]
+
 from sesame_lite.scene_graph import _raw_data, _raw_model  # noqa: E402
-from sesame_lite.uncertainty import box_axes, instance_visual_geoms, visual_support  # noqa: E402
 
 model, data = _raw_model(env.rs.sim), _raw_data(env.rs.sim)
-Vmap = np.asarray(dsg.DynamicSceneGraph.load(str(out_dir / "dsg.json")).mesh.get_vertices())[:3].T.astype(np.float64)
 hydra_dsg = dsg.DynamicSceneGraph.load(str(out_dir / "dsg.json"))
-own_near = {True: 0, False: 0}
-over_mr = [r for r in records if r["e_m"] > kap * r["sigma_m"] + m_r]
-for r in over_mr:
-    A = box_axes(np.asarray(hydra.nodes[r["hydra_id"]].rotation))
-    truth_pt = visual_support(model, data, instance_visual_geoms(model, env.oracle_lookup.bodies[r["oracle_id"]]), A[r["face"]][None, :])[0]
-    own = np.concatenate([np.asarray(list(hydra_dsg.get_node(dsg.NodeSymbol("O", int(h[2:-1]))).attributes.mesh_connections)) for h in bridge.hydra_of[r["oracle_id"]]])
-    near = bool(np.min(np.linalg.norm(Vmap[own] - truth_pt, axis=1)) <= 1.5 * voxel)
-    r["own_surface_near_truth"] = near
-    own_near[near] += 1
-summary["coverage"]["e_gt_kappa_sigma_plus_m_r_own_surface_near_truth"] = own_near[True]
-summary["coverage"]["e_gt_kappa_sigma_plus_m_r_own_surface_not_near_truth"] = own_near[False]
-report += [f"Diagnostic split of the {len(over_mr)} faces with e > kappa*sigma + m_r (does not change the count): the instance's own reconstructed surface "
-           f"(a vertex of its Hydra node within 1.5 voxels of the true supporting point) exists for {own_near[True]}; for {own_near[False]} the true extreme "
-           "point was never reconstructed as part of that instance (it is hidden behind or inside other geometry, or thinner than a voxel), and the voxel "
-           "that makes the face count as observed belongs to a neighbouring surface.", ""]
+Vmap = np.asarray(hydra_dsg.mesh.get_vertices())[:3].T.astype(np.float64)
 
 # ------------------------------------------------------------------ 3b. noise model on planar walls
 from sesame_lite.uncertainty import VoxelGrid, vertex_std  # noqa: E402

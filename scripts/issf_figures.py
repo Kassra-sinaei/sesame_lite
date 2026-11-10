@@ -1,6 +1,6 @@
 """Figures of one episode with the ISSf filter on confidence boxes (spec 5.5), from its receipts only.
 
-    .venv/bin/python scripts/issf_figures.py outputs/phase2/nav_mats/NavigateKitchenMats_s100_sesame.json
+    .venv/bin/python scripts/issf_figures.py outputs/<run>/NavigateKitchenClutter_s100_sesame.json
 
 Writes next to the episode file:
   <stem>_h.pdf        h of the closest row (confidence boxes) and the true clearance (oracle boxes) over time

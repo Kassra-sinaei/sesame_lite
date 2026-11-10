@@ -1,7 +1,7 @@
 """Plan one mission with the LangGraph planner (Qwen3-14B, tool calling) and write it as a runnable plan file.
 
-The scene is the mission's kitchen at the given seed, exactly as run_episode builds it (for nav_mats: with the
-mats already on the floor). The planner sees only the Hydra scene graph and the task instruction.
+The scene is the mission's kitchen at the given seed, exactly as run_episode builds it (for nav_clutter: with the
+flour bag already on the floor). The planner sees only the Hydra scene graph and the task instruction.
 
     bash scripts/llm/serve_qwen.sh &      # once
     MUJOCO_GL=egl .venv/bin/python -s scripts/plan_mission.py --plan plans/open_drawer.json --seed 100
@@ -22,7 +22,7 @@ from pathlib import Path
 if os.environ.get("PYTHONHASHSEED") != "0":  # same scene as run_episode (see sesame_lite/determinism.py)
     os.execve(sys.executable, [sys.executable, *sys.argv], {**os.environ, "PYTHONHASHSEED": "0"})
 
-import sesame_lite.tasks  # noqa: F401,E402  (registers NavigateKitchenMats)
+import sesame_lite.tasks  # noqa: F401,E402  (registers NavigateKitchenClutter)
 from sesame_lite.agents.planner_agent import run_planner  # noqa: E402
 from sesame_lite.env import SafetyFilterEnv, SesameRoboCasaEnv  # noqa: E402
 from sesame_lite.planner import load_plan, resolve_role  # noqa: E402

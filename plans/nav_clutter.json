@@ -1,0 +1,12 @@
+{
+  "mission": "nav_clutter",
+  "task": "NavigateKitchenClutter",
+  "description": "Navigate to the target fixture across a cluttered kitchen. A flour bag sits beside the planned path inside the corridor (it must not be touched).",
+  "env_kwargs": {"clutter_mode": 1},
+  "horizon": 450,
+  "roles": {"target": {"target_fixture": true}},
+  "injections": [{"name": "bag_1"}],
+  "segments": [
+    {"kind": "NAVIGATION", "goal": {"role": "target", "robocasa_target": true, "standoff": true}, "done": {"check": "base_near_goal", "radius": 0.2}}
+  ]
+}

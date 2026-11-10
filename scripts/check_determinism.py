@@ -14,7 +14,7 @@ import sys
 if os.environ.get("PYTHONHASHSEED") != "0":
     os.execve(sys.executable, [sys.executable, *sys.argv], {**os.environ, "PYTHONHASHSEED": "0"})
 
-import sesame_lite.tasks  # noqa: F401,E402  (registers NavigateKitchenMats)
+import sesame_lite.tasks  # noqa: F401,E402  (registers NavigateKitchenClutter)
 from sesame_lite.determinism import SAMPLER_SEED  # noqa: E402
 from sesame_lite.env import SesameRoboCasaEnv  # noqa: E402
 from sesame_lite.planner import load_plan  # noqa: E402

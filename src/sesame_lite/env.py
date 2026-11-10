@@ -61,6 +61,8 @@ STALL_HOLD_TICKS = 50
 STALL_PROGRESS_TICKS = 100
 STALL_SPEED_MPS = 0.02
 MAX_REPLANS = 3
+BACK_OUT_MAX_M = 0.10  # before a manipulation segment the base may back out of an enlarged box by at most this
+BACK_OUT_SPEED_MPS = 0.10
 GT_HORIZON_M = 0.6  # ground truth keeps exact barrier values up to this distance (pruning-quality deltas go to 0.5 m)  # re-prunes per navigation segment after a corridor exit (bounded, as in the paper)
 
 
@@ -206,7 +208,7 @@ class SafetyFilterEnv(gym.Wrapper):
             pxy, pyaw = self._prev_pose
             v[:2] = R[:2, :2].T @ ((bp[:2] - pxy) / CONTROL_DT_S)
             v[2] = float(np.arctan2(np.sin(yaw - pyaw), np.cos(yaw - pyaw))) / CONTROL_DT_S
-        return RobotState(base_position=bp, base_rotation=R, eef_position=eef, base_rectangle_xy=self.rect, base_mode=base_mode, base_velocity=v, yaw_axis_xy=self.yaw_axis_xy(bp, R), arm_points=self.arm_points(), command_theta=yaw - self.init_yaw)
+        return RobotState(base_position=bp, base_rotation=R, eef_position=eef, base_rectangle_xy=self.rect, base_mode=base_mode, base_velocity=v, yaw_axis_xy=self.yaw_axis_xy(bp, R), arm_points=self.arm_points(), command_theta=yaw - self.init_yaw, base_locked=getattr(self, "base_locked", False))
 
     def _touched_oracle_ids(self) -> set[str]:
         """Oracle nodes the robot touches now (MuJoCo contacts map to oracle ids only)."""
@@ -244,9 +246,8 @@ class SafetyFilterEnv(gym.Wrapper):
         standoff = self.policy.goal_standoff_m
         self.plan_kwargs = dict(base_xy=bp[:2], rect_xy=self.rect, z_band=self.z_band, clearance_m=standoff, inflation_m=float(hi[1] - lo[1]) / 2 + 0.10)
         self.segments = self._resolve()
-        self.gt_passable_oracle_ids = set()
         if self.plan.get("injections") and self.segments[0].kind == NAVIGATION:
-            # floor objects are dropped onto the planned path, then the graph is captured again (the path planner
+            # floor objects are dropped next to the planned path, then the graph is captured again (the path planner
             # only knows fixtures, as a navigation stack's static map would; the objects enter through the 3DSG)
             from sesame_lite.tasks import place_on_path
 
@@ -254,15 +255,16 @@ class SafetyFilterEnv(gym.Wrapper):
             first = self.segments
             self._capture()  # objects are renumbered by position: resolve the roles again on the new graph
             self.segments = self._resolve()
-            for old, new in zip(first, self.segments):  # but keep the path the mats were dropped on
+            for old, new in zip(first, self.segments):  # but keep the path the objects were placed along
                 new.path_polyline_xy, new.goal_yaw, new.goal_offset_m, new.center_xy = old.path_polyline_xy, old.goal_yaw, old.goal_offset_m, old.center_xy
-            self.gt_passable_oracle_ids = {self.oracle_lookup.node(f"object:{inj['name']}") for inj in self.plan["injections"] if inj.get("ground_truth") == "passable"} - {None}
         # contact bookkeeping (MuJoCo body -> oracle node), from the oracle lookup
         self.oracle_id_of_body = {b: oracle_id for oracle_id, bodies in self.oracle_lookup.bodies.items() for b in bodies}
         self.robot_bodies = _subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, rs.robots[0].robot_model.root_body))
         self.receipts, self.ground_truth, self.bundles, self.min_h_by_oracle_id, self.confidence_log = [], [], [], {}, []
         self.tick, self.epoch, self.hold_streak, self._prev_pose = 0, 0, 0, None
         self.replans, self.segment_index = 0, -1
+        self.back_out_log, self.blocked, self.base_locked, self.pending_clear = [], False, False, False
+        self.start_h_enlarged = None  # set by begin_segment(0): the start check on the enlarged boxes
         self.begin_segment(0)
         self.start_h = self._true_h(self.robot_state())
         self.start_violation = bool(self.start_h is not None and self.start_h < -self.policy.policy_margin_m)
@@ -295,7 +297,7 @@ class SafetyFilterEnv(gym.Wrapper):
         self.n_capture += 1
         # planning, standoff and pruning see the confidence boxes for the largest admitted count (every node), so they
         # are never smaller than the boxes the filter enforces once a segment's admitted count is known
-        self.graph = self.base_graph.with_confidence(kappa=kappa(self.policy.delta, len(self.base_graph.nodes)), m_d=self.policy.disturbance_offset_m)
+        self.graph = self.base_graph.with_confidence(kappa=kappa(self.policy.delta, len(self.base_graph.nodes)), m_d=self.policy.disturbance_offset_m, m_r_voxels=self.policy.m_r_voxels)
         self.oracle_fragments, self.fragments = self.oracle_graph.fragments(), self.graph.fragments()
 
     def _resolve(self):
@@ -322,16 +324,21 @@ class SafetyFilterEnv(gym.Wrapper):
         self.bundles.append(self.bundle)
         # the confidence boxes of this segment: delta split over its admitted nodes (every node without pruning)
         n_risk = len(self.bundle.admitted_ids) if self.pruning else len(self.base_graph.nodes)
-        self.row_graph = self.base_graph.with_confidence(kappa=kappa(self.policy.delta, n_risk), m_d=self.policy.disturbance_offset_m)
+        self.row_graph = self.base_graph.with_confidence(kappa=kappa(self.policy.delta, n_risk), m_d=self.policy.disturbance_offset_m, m_r_voxels=self.policy.m_r_voxels)
         self.fragments = self.row_graph.fragments()
         row_ids = self.bundle.admitted_ids if self.pruning else [n.node_id for n in self.graph.obstacle_nodes()]
         self.row_ids = self.graph.fragment_ids_of(row_ids, exempt=seg.exempt_ids)
-        # ground truth: every non-exempt node of the oracle graph (and nothing drivable by construction), the same for every switch setting
-        self.exempt_oracle_ids = {self.bridge.to_oracle(hydra_id) for hydra_id in seg.exempt_ids} - {None} | set(self.gt_passable_oracle_ids)
+        # ground truth: every non-exempt node of the oracle graph, the same for every switch setting
+        self.exempt_oracle_ids = {self.bridge.to_oracle(hydra_id) for hydra_id in seg.exempt_ids} - {None}
         self.eval_ids = self.oracle_graph.fragment_ids_of([n.node_id for n in self.oracle_graph.obstacle_nodes()], exempt=self.exempt_oracle_ids)
+        if index == 0 and self.start_h_enlarged is None:  # the start check on the enlarged boxes (before any back-out)
+            samples, _, _, _ = self.filter.build_rows(self.robot_state(), self.fragments, base_rows_for=self.row_ids, eef_rows_for=self.row_ids)
+            self.start_h_enlarged = min((smp.value for smp in samples), default=None)
+        self.base_locked = False
+        self.pending_clear = seg.kind == VLA and self.filter_on  # MissionRunner clears the base before the segment runs
         admitted_faces = [n.confidence["kappa_sigma"][k] for nid, n in self.row_graph.nodes.items() if nid in set(self.row_ids) for k in range(6)]
         self.confidence_log.append({"segment": index, "epoch": self.epoch + 1, "n_risk": n_risk, "kappa": kappa(self.policy.delta, n_risk), "m_d": self.policy.disturbance_offset_m,
-                                    "m_r": self.base_graph.voxel_size_m / 4, "kappa_sigma_admitted_faces": admitted_faces, "boxes": self.row_graph.confidence_as_dict()})
+                                    "m_r": self.base_graph.voxel_size_m * self.policy.m_r_voxels, "kappa_sigma_admitted_faces": admitted_faces, "boxes": self.row_graph.confidence_as_dict()})
         self.epoch += 1
         self.segment_start_tick = self.tick
 
@@ -352,18 +359,57 @@ class SafetyFilterEnv(gym.Wrapper):
 
     # ------------------------------------------------------------------ gym API
 
-    def step(self, action):
-        state = self.robot_state(bool(action[MODE_INDEX] >= 0.5))
-        self._prev_pose = (state.base_position[:2].copy(), float(np.arctan2(state.base_rotation[1, 0], state.base_rotation[0, 0])))
-        a_out, receipt = self.filter.filter_action(tick=self.tick, action=action, state=state, fragments=self.fragments, base_rows_for=self.row_ids, eef_rows_for=self.row_ids, passive=not self.filter_on)
-        rec = receipt.as_dict()
+    def clear_base(self, on_frame=None) -> None:
+        """Before a manipulation segment (spec item 6b): if the base is inside an enlarged box (a base row has h < 0),
+        drive it out along the gradient of the deepest base row at BACK_OUT_SPEED_MPS until every base row is clear,
+        at most BACK_OUT_MAX_M from where it stood, then lock it for the segment. If that is not enough the mission
+        stops (``blocked``). The ticks are recorded like any other (outcome "back_out")."""
+        log = self._back_out(on_frame)
+        self.back_out_log.append(log)
+        self.blocked = not log["cleared"]
+        self.base_locked = True
+        self.pending_clear = False
+
+    def _back_out(self, on_frame) -> dict:
+        start = self.robot_pose()[0][:2].copy()
+        log = {"segment": self.segment_index, "h_start_m": None, "distance_m": 0.0, "ticks": 0, "cleared": True}
+        while True:
+            state = self.robot_state(True)
+            samples, G, _, _ = self.filter.build_rows(state, self.fragments, base_rows_for=self.row_ids, eef_rows_for=())
+            hs = [smp.value for smp in samples]
+            h = min(hs, default=float("inf"))
+            if log["h_start_m"] is None:
+                log["h_start_m"] = h if np.isfinite(h) else None
+            log["distance_m"] = float(np.linalg.norm(state.base_position[:2] - start))
+            if h >= 0.0:
+                break
+            if log["distance_m"] >= BACK_OUT_MAX_M or log["ticks"] >= 10 * int(BACK_OUT_MAX_M / (BACK_OUT_SPEED_MPS * CONTROL_DT_S)):
+                log["cleared"] = False
+                break
+            grad = -G[int(np.argmin(hs)), :2]  # dh / d(vx, vy) of the deepest row, base frame
+            v = BACK_OUT_SPEED_MPS * grad / max(float(np.linalg.norm(grad)), 1e-9)
+            action = np.zeros(12, dtype=np.float32)
+            action[0:3] = base_velocity_to_command([v[0], v[1], 0.0], self.policy, state.command_theta)
+            action[MODE_INDEX] = 1.0
+            self._record(state, {"tick": self.tick, "outcome": "back_out", "n_rows": len(samples), "h_min": h, "h_min_row": samples[int(np.argmin(hs))].constraint_id,
+                                 "n_rows_negative": sum(x < 0 for x in hs), "below_margin": False, "qp_status": "none", "solve_ms": 0.0, "tick_ms": 0.0,
+                                 "u_nominal": [0.0] * 6, "u_applied": [float(v[0]), float(v[1])] + [0.0] * 4, "correction_norm": 0.0, "rows": [],
+                                 "rows_without_free_command": []}, [])
+            self.env.step(action)
+            log["ticks"] += 1
+            if on_frame is not None:
+                on_frame(self)
+        return log
+
+    def _record(self, state, rec: dict, active_rows) -> None:
+        """Append one tick's receipt (with the ids on both sides) and its ground truth."""
         filter_id = rec["h_min_row"].split(":")[-1] if rec["h_min_row"] else None
         oracle_id = self.bridge.to_oracle(filter_id) if filter_id else None
         rec.update(segment=self.segment_index, epoch=self.epoch, graph_source=self.graph_source,
                    h_min_id=f"{self.bridge.prefix}{filter_id}" if filter_id else None, h_min_oracle_id=f"O:{oracle_id}" if oracle_id else None)
         # every active row: node, category, the nearest face's kappa*sigma and total inflation, and h
         rows = []
-        for row_id, body, h, face in receipt.active_rows:
+        for row_id, body, h, face in active_rows:
             conf = self.row_graph.nodes[row_id].confidence
             rows.append({"id": f"{self.bridge.prefix}{row_id}", "body": body, "category": self.row_graph.nodes[row_id].category,
                          "kappa_sigma": round(conf["kappa_sigma"][face], 5), "inflation": round(conf["inflation"][face], 5), "h": round(h, 5)})
@@ -381,7 +427,13 @@ class SafetyFilterEnv(gym.Wrapper):
                 "eef": state.eef_position.round(4).tolist(),
             }
         )
+        self._prev_pose = (state.base_position[:2].copy(), float(np.arctan2(state.base_rotation[1, 0], state.base_rotation[0, 0])))
         self.tick += 1
+
+    def step(self, action):
+        state = self.robot_state(bool(action[MODE_INDEX] >= 0.5))
+        a_out, receipt = self.filter.filter_action(tick=self.tick, action=action, state=state, fragments=self.fragments, base_rows_for=self.row_ids, eef_rows_for=self.row_ids, passive=not self.filter_on)
+        self._record(state, receipt.as_dict(), receipt.active_rows)
         out = self.env.step(np.asarray(a_out, dtype=np.float32))
         if self.segment.kind == NAVIGATION and self.replans < MAX_REPLANS and self._path_deviation() > BETA_DEVIATION_BUDGET_M:
             self.replan()  # Assumption 1 premise violated: new path from here, new epoch (stage 1 + labels again)
@@ -437,7 +489,9 @@ class SafetyFilterEnv(gym.Wrapper):
         h_all = [g["h_min_all"] for g in gt if g["h_min_all"] is not None]
         contact_ticks = sum(1 for g in self.ground_truth if g["touched"])  # physical contact always counts
         violated = bool(contact_ticks or any(h < -m for h in h_all))
-        if self.start_violation and not success and not violated and not gt:
+        if self.blocked:
+            outcome = "base_not_cleared"
+        elif self.start_violation and not success and not violated and not gt:
             outcome = "start_violation"
         elif success:
             outcome = "success_but_unsafe" if violated else "success"
@@ -456,6 +510,10 @@ class SafetyFilterEnv(gym.Wrapper):
             "stalled": stalled,
             "start_violation": self.start_violation,
             "start_h": self.start_h,
+            "start_h_enlarged": self.start_h_enlarged,  # the start check on the enlarged boxes (filter side)
+            "start_inside_enlarged": bool(self.start_h_enlarged is not None and self.start_h_enlarged < 0.0),
+            "back_out": self.back_out_log,
+            "ticks_rows_without_free_command": sum(1 for r in self.receipts if r.get("rows_without_free_command")),
             "steps": self.tick,
             "segments_done": self.segment_index + int(success),
             "n_segments": len(self.segments),
@@ -622,6 +680,10 @@ class MissionRunner:
         success = stalled = False
         max_steps = env.env._max_episode_steps
         while env.tick < max_steps:
+            if env.pending_clear:
+                env.clear_base(self.on_frame)
+            if env.blocked:  # the base could not be cleared of an enlarged box within BACK_OUT_MAX_M: the mission stops
+                break
             seg = env.segment
             follower = NavFollower(seg.path_polyline_xy, seg.goal_yaw, init_yaw=env.init_yaw, policy=env.policy) if seg.kind == NAVIGATION else None
             if seg.kind == VLA and self.vla is None:

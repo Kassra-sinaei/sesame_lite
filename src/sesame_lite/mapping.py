@@ -55,6 +55,9 @@ class MappingParams:
     pitches_deg: tuple[float, ...] = (-10.0, -45.0)
     route_spacing_m: float = 0.5  # the oracle place grid's spacing
     route_min_clearance_m: float = 0.3
+    large_surface_m2: float = 0.5  # vertical box faces at least this large get a view within route_view_angle_deg
+    route_view_angle_deg: float = 45.0  # the route adds views until every large vertical surface is seen this frontally
+    observed_view_angle_deg: float = 60.0  # a face never seen within this angle of its normal is not observed
     frame_dt_s: float = 0.1  # timestamp spacing between frames
     full_update_separation_s: float = 1.0  # Hydra extracts mesh and objects at most this often (timestamp time)
     labels: str = "instance"  # "instance" (default) or "category" (the check of 4.8 item 5)
@@ -178,6 +181,7 @@ class MappingCamera:
 
     def render(self, position, yaw_deg: float, pitch_deg: float, *, noise: bool = True):
         """depth (float32, NaN invalid), labels (int32), rgb (uint8), camera position, world_R_optical."""
+        position = np.asarray(position, dtype=float)
         fovy = float(self.model.vis.global_.fovy)
         self.model.vis.global_.fovy = self.p.fovy_deg  # a free camera uses the global fovy
         try:
@@ -192,6 +196,7 @@ class MappingCamera:
             pos, R = self.pose()
         finally:
             self.model.vis.global_.fovy = fovy
+        assert np.linalg.norm(pos - position) < 1e-3, f"free camera placed at {pos}, wanted {position}"
         is_geom = (seg[..., 1] == int(mujoco.mjtObj.mjOBJ_GEOM)) & (seg[..., 0] >= 0)
         labels = np.zeros(depth.shape, dtype=np.int32)
         labels[is_geom] = self.geom_label[seg[..., 0][is_geom]]
@@ -215,26 +220,32 @@ def back_project(depth: np.ndarray, params: MappingParams, pos: np.ndarray, R: n
     return pts_c @ R.T + pos
 
 
-def check_camera(cam: MappingCamera, poses: list, oracle_graph: SceneGraph, table: dict, max_median_m: float = 0.02) -> dict:
-    """Spec 4.3: back-project noise-free depth from two poses; the median distance of the object pixels to the nearest
-    oracle box surface must be below 2 cm. A frame or axis mistake fails here instead of giving a silently wrong map."""
-    lo = np.array([n.aabb()[0] for n in oracle_graph.nodes.values()])
-    hi = np.array([n.aabb()[1] for n in oracle_graph.nodes.values()])
-    floor = table["labelspace"]["surface_places_labels"][0]
+def check_camera(cam: MappingCamera, poses: list, oracle_graph: SceneGraph, table: dict, max_median_m: float = 0.02, n_rays: int = 300) -> dict:
+    """Spec 4.3, before Hydra sees a single frame: for two poses, cast a MuJoCo ray (visual geoms) through random valid
+    pixels using our intrinsics and pose, and compare the hit's planar depth with the rendered depth. The median
+    difference must be below 2 cm. An axis sign, a row flip, ray length taken as planar depth or a wrong rotation
+    sends the rays elsewhere and fails here. (A first version measured the back-projected points against the oracle
+    boxes; that is ill-posed where handles widen a box, e.g. the fridge doors of layout 47 lie 3-4 cm inside it.)"""
+    rng = np.random.default_rng(0)
+    group = np.zeros(6, np.uint8)
+    group[1] = 1  # the visual geoms the camera renders
+    hit = np.array([-1], np.int32)
     out = []
     for i in (0, len(poses) // 2):
-        depth, labels, _, pos, R = cam.render(*poses[i], noise=False)
-        keep = np.isfinite(depth) & (labels > 0) & (labels != floor)
-        pts = back_project(np.where(keep, depth, np.nan), cam.p, pos, R)
-        d = np.full(len(pts), np.inf)
-        for l, h in zip(lo, hi):
-            outside = np.linalg.norm(np.maximum(np.maximum(l - pts, pts - h), 0.0), axis=1)
-            inside = np.all((pts >= l) & (pts <= h), axis=1)
-            d = np.minimum(d, np.where(inside, np.min(np.minimum(pts - l, h - pts), axis=1), outside))
-        out.append({"pose": [float(v) for v in poses[i][0]] + [poses[i][1], poses[i][2]], "pixels": int(len(pts)), "median_m": float(np.median(d)), "p90_m": float(np.percentile(d, 90))})
+        depth, _, _, pos, R = cam.render(*poses[i], noise=False)
+        v, u = np.nonzero(np.isfinite(depth))
+        sel = rng.choice(len(v), min(n_rays, len(v)), replace=False)
+        diff = []
+        for k in sel:
+            ray = np.array([(u[k] - cam.p.cx) / cam.p.fx, (v[k] - cam.p.cy) / cam.p.fy, 1.0])
+            direction = R @ ray
+            dist = mujoco.mj_ray(cam.model, cam.data, pos, direction / np.linalg.norm(direction), group, 1, -1, hit)
+            diff.append(abs(float(depth[v[k], u[k]]) - dist / np.linalg.norm(ray)))
+        diff = np.array(diff)
+        out.append({"pose": [float(x) for x in poses[i][0]] + [poses[i][1], poses[i][2]], "rays": int(len(diff)), "median_m": float(np.median(diff)), "p90_m": float(np.percentile(diff, 90))})
     cam.rng = np.random.default_rng(cam.seed)  # the check does not use up noise draws of the mapping frames
     if not all(c["median_m"] < max_median_m for c in out):
-        raise RuntimeError(f"camera check failed (median distance to the oracle boxes >= 2 cm): {out}")
+        raise RuntimeError(f"camera check failed (median |rendered - ray-cast depth| >= 2 cm): {out}")
     return {"passed": True, "poses": out}
 
 
@@ -248,9 +259,22 @@ def quat_wxyz(R: np.ndarray) -> np.ndarray:
 
 
 def mapping_route(oracle_graph: SceneGraph, rs_env, params: MappingParams) -> tuple[list[tuple[np.ndarray, float, float]], list]:
-    """Camera poses: every place of the oracle grid with clearance >= route_min_clearance_m, at camera height,
-    yaw every yaw_step_deg, each pitch. Places where the camera would sit inside the robot are skipped (listed)."""
+    """Camera poses: every place of the oracle grid with clearance >= route_min_clearance_m that lies over the kitchen's
+    floor, at camera height, yaw every yaw_step_deg, each pitch. Places where the camera would sit inside the robot are
+    skipped (listed). The oracle grid spans the bounding box of all boxes, so in an L-shaped kitchen some of its places
+    lie outside the room; the floor test drops them."""
     model, data = _raw_model(rs_env.sim), _raw_data(rs_env.sim)
+    floor = []  # x-y rectangles of the floor fixtures' geoms
+    for fx in rs_env.fixtures.values():
+        if type(fx).__name__ == "Floor" and getattr(fx, "root_body", None):
+            for b in _subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, fx.root_body)):
+                for g in np.flatnonzero(model.geom_bodyid == b):
+                    corners = (np.array([(sx, sy, sz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]) * model.geom_aabb[g][3:] + model.geom_aabb[g][:3]) @ data.geom_xmat[g].reshape(3, 3).T + data.geom_xpos[g]
+                    floor.append((corners[:, :2].min(axis=0), corners[:, :2].max(axis=0)))
+
+    def over_floor(xy):
+        return any(np.all(xy >= lo) and np.all(xy <= hi) for lo, hi in floor)
+
     robot_root = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, rs_env.robots[0].robot_model.root_body)
     robot_bodies = _subtree_body_ids(model, robot_root)
     gids = [g for g in range(model.ngeom) if int(model.geom_bodyid[g]) in robot_bodies and int(model.geom_group[g]) == 1]
@@ -258,7 +282,7 @@ def mapping_route(oracle_graph: SceneGraph, rs_env, params: MappingParams) -> tu
     robot_r = float(np.max(np.linalg.norm(robot_xy - robot_xy.mean(axis=0), axis=1))) + 0.3
     poses, skipped = [], []
     for pid, (p, clearance) in sorted(oracle_graph.places.items(), key=lambda kv: (kv[1][0][0], kv[1][0][1])):
-        if clearance < params.route_min_clearance_m:
+        if clearance < params.route_min_clearance_m or not over_floor(p[:2]):
             continue
         if np.linalg.norm(p[:2] - robot_xy.mean(axis=0)) < robot_r:
             skipped.append(pid)
@@ -267,6 +291,86 @@ def mapping_route(oracle_graph: SceneGraph, rs_env, params: MappingParams) -> tu
             for pitch in params.pitches_deg:
                 poses.append((np.array([p[0], p[1], params.camera_height_m]), k * params.yaw_step_deg, pitch))
     return poses, skipped
+
+
+def _segments_blocked(a: np.ndarray, b: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
+    """For segments a[i] -> b[i], whether any box [lo[j], hi[j]] intersects them (slab test)."""
+    d = b - a
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t1 = (lo[None, :, :] - a[:, None, :]) / d[:, None, :]
+        t2 = (hi[None, :, :] - a[:, None, :]) / d[:, None, :]
+    tmin = np.nanmax(np.where(np.isfinite(t1) | np.isfinite(t2), np.minimum(t1, t2), -np.inf), axis=2)
+    tmax = np.nanmin(np.where(np.isfinite(t1) | np.isfinite(t2), np.maximum(t1, t2), np.inf), axis=2)
+    parallel_out = np.any((d[:, None, :] == 0) & ((a[:, None, :] < lo[None]) | (a[:, None, :] > hi[None])), axis=2)
+    return np.any((tmax >= np.maximum(tmin, 0.0)) & (tmin <= 1.0) & ~parallel_out, axis=1)
+
+
+def targeted_views(oracle_graph: SceneGraph, poses: list, params: MappingParams) -> tuple[list, dict]:
+    """Extra camera poses so that every large vertical surface is viewed at least once within route_view_angle_deg of
+    its normal (spec item 4). Uses the oracle boxes (the operator's route may use ground truth).
+
+    Surfaces: vertical faces of the oracle boxes with area >= large_surface_m2, sampled every 0.25 m. A sample is seen
+    from a camera position if the segment to it (stopping 1 cm short) crosses no box, it is within range, and the view
+    direction is within the angle of the face normal. The base route (yaw every 30 deg, pitches -10/-45, vertical field
+    of view 58 deg) sees samples between 74 deg below and 19 deg above the horizon. A face no base view sees gets one
+    pose aimed at its best sample (smallest angle), from the base route's positions. Faces no position can see at all
+    (backs against walls, outer wall faces) are listed as hidden.
+    """
+    ids = list(oracle_graph.nodes)
+    lo = np.array([oracle_graph.nodes[i].aabb()[0] for i in ids])
+    hi = np.array([oracle_graph.nodes[i].aabb()[1] for i in ids])
+    cams = np.unique(np.array([p[0] for p in poses]), axis=0)
+    half_v = np.radians(params.fovy_deg) / 2
+    elev_lo, elev_hi = np.radians(min(params.pitches_deg)) - half_v, np.radians(max(params.pitches_deg)) + half_v
+    cos_max = np.cos(np.radians(params.route_view_angle_deg))
+    extra, report = [], {"faces": 0, "seen_by_base_route": 0, "given_a_view": [], "hidden": [], "not_reachable": []}
+    for j, oracle_id in enumerate(ids):
+        ext = hi[j] - lo[j]
+        for axis in (0, 1):
+            other = 1 - axis
+            if ext[other] * ext[2] < params.large_surface_m2:
+                continue
+            for sign in (-1.0, 1.0):
+                normal = np.zeros(3)
+                normal[axis] = sign
+                us = np.arange(lo[j][other] + 0.125, hi[j][other], 0.25)
+                zs = np.arange(lo[j][2] + 0.125, hi[j][2], 0.25)
+                if not len(us) or not len(zs):
+                    continue
+                U, Z = np.meshgrid(us, zs)
+                pts = np.zeros((U.size, 3))
+                pts[:, other], pts[:, 2] = U.ravel(), Z.ravel()
+                pts[:, axis] = hi[j][axis] if sign > 0 else lo[j][axis]
+                report["faces"] += 1
+                name = f"O:{oracle_id} {oracle_graph.nodes[oracle_id].category} {'+-'[sign < 0]}{'xy'[axis]}"
+                # every (camera, sample) pair: geometry, then line of sight
+                C = np.repeat(cams, len(pts), axis=0)
+                P = np.tile(pts, (len(cams), 1))
+                d = C - P
+                dist = np.linalg.norm(d, axis=1)
+                cosang = d @ normal / np.maximum(dist, 1e-9)
+                elev = np.arcsin(np.clip(-d[:, 2] / np.maximum(dist, 1e-9), -1, 1))
+                ok = (dist > params.min_range_m) & (dist < params.max_range_m) & (cosang > 0)
+                if np.any(ok):
+                    idx = np.flatnonzero(ok)
+                    stop = P[idx] + 0.01 * d[idx] / dist[idx, None]
+                    ok[idx[_segments_blocked(C[idx], stop, lo, hi)]] = False
+                if not np.any(ok):
+                    report["hidden"].append(name)
+                    continue
+                frontal = ok & (cosang >= cos_max)
+                if np.any(frontal & (elev >= elev_lo) & (elev <= elev_hi)):
+                    report["seen_by_base_route"] += 1
+                    continue
+                if not np.any(frontal):
+                    report["not_reachable"].append(f"{name} (best {np.degrees(np.arccos(cosang[ok].max())):.0f} deg)")
+                    continue
+                k = int(np.flatnonzero(frontal)[np.argmax(cosang[frontal])])
+                look = -d[k] / dist[k]
+                yaw, pitch = np.degrees(np.arctan2(look[1], look[0])), np.degrees(np.arcsin(look[2]))
+                extra.append((C[k].copy(), float(yaw), float(pitch)))
+                report["given_a_view"].append(f"{name} ({np.degrees(np.arccos(cosang[k])):.0f} deg, pitch {pitch:+.0f})")
+    return extra, report
 
 
 # --------------------------------------------------------------------------- Hydra
@@ -348,10 +452,20 @@ def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: P
     t0 = time.time()
     table = instance_table(rs_env, oracle_graph, lookup, oracle_graph.labels, params.labels)
     poses, skipped = mapping_route(oracle_graph, rs_env, params)
+    extra, coverage = targeted_views(oracle_graph, poses, params)
+    poses = poses + extra
     cam = MappingCamera(rs_env, params, table["geom_label"], seed)
+    views = []  # what each frame saw (pose, depth, labels): the map side's record for the observation-angle rule
+
+    def frames():
+        for pose in poses:
+            depth, labels, rgb, pos, R = cam.render(*pose)
+            views.append((pos, R, depth.astype(np.float16), labels.astype(np.int16)))
+            yield depth, labels, rgb, pos, R
+
     try:
         camera_check = check_camera(cam, poses, oracle_graph, table)  # before Hydra sees a single frame
-        stats = run_hydra((cam.render(*pose) for pose in poses), len(poses), params, table["labelspace"], out_dir)
+        stats = run_hydra(frames(), len(poses), params, table["labelspace"], out_dir)
     finally:
         cam.close()
     t_map = time.time() - t0
@@ -362,11 +476,11 @@ def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: P
         "oracle_of_label": {str(k): v for k, v in table["oracle_of_label"].items()},  # evaluation side only
         "labelspace": table["labelspace"],
         "params": params.as_dict(),
-        "route": {"camera_poses": len(poses), "places_skipped_inside_robot": skipped},
+        "route": {"camera_poses": len(poses), "targeted_poses": len(extra), "places_skipped_inside_robot": skipped, "large_vertical_surfaces": coverage},
         "camera_check": camera_check,
         "hydra": stats,
         "seconds": round(t_map, 1),
     }
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=1))
-    write_faces(out_dir, rs_env, oracle_graph, lookup)
+    write_faces(out_dir, rs_env, oracle_graph, lookup, views=views, params=params)
     return out_dir
