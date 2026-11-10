@@ -21,8 +21,8 @@ import numpy as np  # noqa: E402
 plt.rcParams.update({"font.family": "serif", "font.serif": ["Nimbus Roman", "Times New Roman"], "font.weight": "normal", "axes.titleweight": "normal",
                      "axes.labelweight": "normal", "mathtext.fontset": "stix", "pdf.fonttype": 42, "font.size": 8, "axes.titlesize": 8, "axes.labelsize": 8,
                      "legend.fontsize": 7, "xtick.labelsize": 7, "ytick.labelsize": 7, "axes.linewidth": 0.6, "savefig.dpi": 600})
-OUTCOMES = ["passive", "passthrough", "filtered", "relaxed", "hold"]
-COLOURS = {"passive": "#BBBBBB", "passthrough": "#4D4D4D", "filtered": "#1F4E9A", "relaxed": "#D95F02", "hold": "#C0392B"}
+OUTCOMES = ["passive", "passthrough", "box", "filtered", "relaxed", "hold"]
+COLOURS = {"passive": "#BBBBBB", "passthrough": "#4D4D4D", "box": "#8DA0CB", "filtered": "#1F4E9A", "relaxed": "#D95F02", "hold": "#C0392B"}
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--episode", required=True)
@@ -62,7 +62,7 @@ for k, o in enumerate(OUTCOMES):
         ax.scatter(t[sel], np.zeros(sel.sum()), marker="|", s=60, color=COLOURS[o], label=f"{o} ({int(sel.sum())})")
 ax.set_yticks([])
 ax.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False)
-ax.set_title("(c) QP outcome per tick", loc="left")
+ax.set_title("(c) QP outcome per tick (box: u_nom clipped to U, no row acting; filtered: a row moved u)", loc="left")
 ax = axs[3]
 ax.plot(t, [r["n_pairs"] for r in rec], color="#9A9A9A", lw=1.5, label="all rows\n(spheres x objects)")
 ax.plot(t, [r["n_rows_qp"] for r in rec], color="black", lw=0.7, label="rows some u in U\ncould violate")

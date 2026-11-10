@@ -27,10 +27,11 @@ ap.add_argument("--env-kwargs", default="{}", help='JSON forwarded to the RoboCa
 ap.add_argument("--out", default="outputs/episodes")
 ap.add_argument("--max-steps", type=int, default=None)
 ap.add_argument("--video", action="store_true")
+ap.add_argument("--policy", default="{}", help='JSON FilterPolicy overrides for a tuning run, e.g. {"alpha": 2.0} (spec v4, section 8 step 4)')
 args = ap.parse_args()
 result = run_episode(
     task=args.task, seed=args.seed, pruning=args.pruning, filter=args.filter, nominal=args.nominal, classifier=args.classifier, out_dir=Path(args.out),
     plan_path=args.plan, env_kwargs=json.loads(args.env_kwargs), max_steps=args.max_steps,
-    video=args.video,
+    video=args.video, policy=json.loads(args.policy),
 )
 print("RESULT " + json.dumps({k: v for k, v in result.items() if k not in ("layout", "exempt")}, default=_json_default))

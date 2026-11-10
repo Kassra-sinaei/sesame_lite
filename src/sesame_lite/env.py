@@ -257,6 +257,8 @@ class SafetyFilterEnv(gym.Wrapper):
         self.base_ctrl, self.torso_ctrl = robot.composite_controller.part_controllers["base"], robot.composite_controller.part_controllers["torso"]
         self.filter = SphereFilter(self.robot, self.policy)
         self.base_model = BaseModel()
+        arm_j = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"robot0_joint{k}") for k in range(1, 8)]
+        self.arm_q_lo, self.arm_q_hi = model.jnt_range[arm_j, 0].copy(), model.jnt_range[arm_j, 1].copy()
         self.receipts, self.ground_truth, self.bundles, self.ball_log, self.q_log, self.sphere_h_log = [], [], [], [], [], []
         self.tick, self.epoch, self.hold_streak, self.stop_reason = 0, 0, 0, None
         self.replans, self.segment_index = 0, -1
@@ -393,7 +395,8 @@ class SafetyFilterEnv(gym.Wrapper):
         u_nom = np.r_[self.base_model.nominal(a[BASE_SLICE], theta, v0), u_arm]
         torso = self.torso_ctrl  # robosuite's joint-position PD (kp 2000, critically damped) towards q + delta
         known = np.r_[pd_mean_velocity(-torso.scale_action(a[TORSO_INDEX:TORSO_INDEX + 1]), qd[3:4], np.sqrt(torso.kp[0]), CONTROL_DT_S), qd[11:13]]
-        u, rec, bar = self.filter.filter(tick=self.tick, q=q, u_nom=u_nom, known_qdot=known, base_bounds=self.base_model.bounds(v0), passive=not self.filter_on)
+        bounds = self.filter.box(q, self.base_model.bounds(v0), self.arm_q_lo, self.arm_q_hi, CONTROL_DT_S)
+        u, rec, bar = self.filter.filter(tick=self.tick, q=q, u_nom=u_nom, known_qdot=known, bounds=bounds, passive=not self.filter_on)
         if not np.allclose(u[:3], u_nom[:3], rtol=0.0, atol=1e-9):  # the base command only changes if the filter changed it
             a[BASE_SLICE] = self.base_model.command(u[:3], theta, v0)
         self.drive.command = (u[3:], profile)
@@ -501,7 +504,7 @@ class SafetyFilterEnv(gym.Wrapper):
         d = (q[1:, COMMANDED] - q[:-1, COMMANDED]) / CONTROL_DT_S - u[:-1]
         n, nb, na = np.linalg.norm(d, axis=1), np.linalg.norm(d[:, :3], axis=1), np.linalg.norm(d[:, 3:], axis=1)
         qs = lambda x: dict(zip(["50%", "90%", "99%", "max"], np.percentile(x, [50, 90, 99, 100]).round(4).tolist()))  # noqa: E731
-        changed = np.array([r["outcome"] in ("filtered", "relaxed", "hold") for r in self.receipts[:-1]])
+        changed = np.array([r["outcome"] in ("box", "filtered", "relaxed", "hold") for r in self.receipts[:-1]])
         return {"d_bar": self.policy.d_bar, "norm": qs(n), "base": qs(nb), "arm": qs(na), "share_above_d_bar": float((n > self.policy.d_bar).mean()),
                 "ticks_above_d_bar": np.flatnonzero(n > self.policy.d_bar).tolist()[:50],
                 "norm_unchanged_ticks": qs(n[~changed]) if (~changed).any() else None, "norm_changed_ticks": qs(n[changed]) if changed.any() else None}
@@ -714,7 +717,7 @@ def run_tag(pruning: bool, filter: bool) -> str:
     return "_".join(off) or "sesame"
 
 
-def run_episode(*, task: str, seed: int, nominal: str, classifier: str, out_dir: Path, pruning: bool = True, filter: bool = True, plan_path: str | None = None, env_kwargs: dict | None = None, max_steps: int | None = None, video: bool = False) -> dict:
+def run_episode(*, task: str, seed: int, nominal: str, classifier: str, out_dir: Path, pruning: bool = True, filter: bool = True, plan_path: str | None = None, env_kwargs: dict | None = None, max_steps: int | None = None, video: bool = False, policy: dict | None = None) -> dict:
     """Run one (task, seed) with one switch setting in this process (the kitchen is hard-reset from the seed)."""
     import sesame_lite.tasks  # noqa: F401  (registers the task variants with robosuite)
     from sesame_lite.planner import load_plan
@@ -727,7 +730,7 @@ def run_episode(*, task: str, seed: int, nominal: str, classifier: str, out_dir:
         max_steps = max_steps or plan.get("horizon")
     base_env = SesameRoboCasaEnv(task, env_kwargs=env_kwargs, episode_length=max_steps)
     t0 = time.time()
-    env = SafetyFilterEnv(base_env, pruning=pruning, filter=filter, classifier=classifier)
+    env = SafetyFilterEnv(base_env, pruning=pruning, filter=filter, classifier=classifier, policy=FilterPolicy(**(policy or {})))
     obs, _ = env.reset(seed=seed, plan=plan)
     vla = SmolVLAPolicy(task) if (nominal == "smolvla" or any(s.kind == VLA for s in env.segments)) else None
     recorder = None

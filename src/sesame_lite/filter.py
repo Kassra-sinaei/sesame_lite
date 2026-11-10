@@ -11,8 +11,9 @@ For every robot sphere i (centre s_i(q), radius r_i, Jacobian J_i; robot_spheres
 
 u = the joint velocities of the base (forward slide, side slide, yaw) and the seven arm joints (columns c);
 the torso and the two fingers are not commanded: they enter each row with their nominal velocity (columns k).
-U is a box: the arm's joint velocity limits, and for the base the mean joint velocities its controller can reach
-within the tick from the current velocity (``BaseModel.bounds``). All pairs are computed on the GPU. A row that no u in U
+U is a box: for the base the mean joint velocities its controller can reach within the tick from the current velocity
+(``BaseModel.bounds``); for the arm the joint velocity limits, narrowed so that no joint passes its position limit
+within the tick (``SphereFilter.box``). All pairs are computed on the GPU. A row that no u in U
 can violate is left out of the solver; this changes no solution and is counted (``n_rows_qp``).
 
 Feasibility (spec 6.3): if the QP is infeasible, it is solved again with one slack per row, priced by
@@ -42,6 +43,7 @@ EE_ROT_SLICE = slice(8, 11)
 GRIPPER_INDEX = 11
 COMMANDED = np.r_[0:3, 4:11]  # columns of u in q = [base 3, torso, arm 7, fingers 2]
 KNOWN = np.r_[3, 11, 12]  # torso and fingers
+ARM_Q = np.r_[4:11]  # the arm joints in q
 DAQP_EXIT = {1: "optimal", 2: "soft_optimal", -1: "infeasible", -2: "cycling", -3: "unbounded", -4: "iteration_limit", -5: "nonconvex", -6: "overdetermined_start"}
 
 
@@ -159,7 +161,7 @@ class Barrier:
 @dataclass
 class FilterReceipt:
     tick: int
-    outcome: str  # "passthrough" | "filtered" | "relaxed" | "hold" | "passive"
+    outcome: str  # "passthrough" | "box" (u_nom clipped to U) | "filtered" (a row acted) | "relaxed" | "hold" | "passive"
     qp_status: str  # DAQP's exit of the QP (and of the relaxed QP), or "none"
     n_pairs: int  # rows of eq. (9): robot spheres x admitted objects
     n_rows_qp: int  # the rows some u in U could violate (given to the solver)
@@ -239,13 +241,22 @@ class SphereFilter:
         pairs = np.stack(np.unravel_index(np.arange(S * O), (S, O)), axis=1)
         return -gc, b, pairs
 
-    def filter(self, *, tick: int, q: np.ndarray, u_nom: np.ndarray, known_qdot: np.ndarray, base_bounds: tuple[np.ndarray, np.ndarray],
+    def box(self, q: np.ndarray, base_bounds: tuple[np.ndarray, np.ndarray], q_lo: np.ndarray, q_hi: np.ndarray, dt: float) -> tuple[np.ndarray, np.ndarray]:
+        """U: the base's reachable mean velocities (BaseModel.bounds); for each arm joint its velocity limit and the
+        velocities that keep it within its position limits over the tick (a joint at a limit cannot move into it)."""
+        qa = np.asarray(q, float)[ARM_Q]
+        lo = np.maximum(-self.arm_limit, (q_lo - qa) / dt)
+        hi = np.minimum(self.arm_limit, (q_hi - qa) / dt)
+        lo = np.minimum(lo, hi)  # a joint already past a limit (MuJoCo's limits are soft): only motion back is allowed
+        return np.r_[base_bounds[0], lo], np.r_[base_bounds[1], hi]
+
+    def filter(self, *, tick: int, q: np.ndarray, u_nom: np.ndarray, known_qdot: np.ndarray, bounds: tuple[np.ndarray, np.ndarray],
                passive: bool = False) -> tuple[np.ndarray, FilterReceipt, Barrier]:
-        """One tick: rows at q, then the QP over u in U (base_bounds for the base, the arm's velocity limits)."""
+        """One tick: rows at q, then the QP over u in U = [bounds] (``box``)."""
         t0 = time.perf_counter()
         p = self.policy
         u_nom = np.asarray(u_nom, float)
-        self.lb, self.ub = np.r_[base_bounds[0], -self.arm_limit], np.r_[base_bounds[1], self.arm_limit]
+        self.lb, self.ub = np.asarray(bounds[0], float), np.asarray(bounds[1], float)
         n = len(u_nom)
         bar = self.barrier(q)
         G, b, pairs = self.rows(bar, known_qdot)
@@ -259,7 +270,10 @@ class SphereFilter:
             u, flag = self._solve(np.eye(n), -u_nom, G, b, self.lb, self.ub)
             status = DAQP_EXIT.get(flag, f"exit_{flag}")
             if flag > 0 and np.all(G @ u - b <= 1e-6):
-                outcome = "filtered" if np.linalg.norm(u - u_nom) > 1e-9 else "passthrough"
+                if np.linalg.norm(u - u_nom) <= 1e-9:
+                    outcome = "passthrough"
+                else:  # "box": u is u_nom clipped to U, no row acted; "filtered": a row moved u
+                    outcome = "box" if np.allclose(u, np.clip(u_nom, self.lb, self.ub), rtol=0.0, atol=1e-7) else "filtered"
             elif flag > 0:
                 u, outcome, status = np.zeros(n), "hold", status + "/postcheck_failed"
             elif flag == -1:  # infeasible: the relaxed QP, one slack per row
