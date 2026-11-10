@@ -1,13 +1,13 @@
 """SESAME-3D on RoboCasa: lerobot's ``RoboCasaEnv`` subclassed for pinned, non-resetting episodes,
 a gym wrapper that runs the per-row semantic safety filter, and the two nominal policies.
 
-Arms share scene (pinned episode metadata), seed, nominal policy, barrier definition and the
-ground-truth evaluation set:
+What runs is set by two switches (defaults: both on, the SESAME-3D method). Every run of a seed shares the scene
+(pinned episode metadata), the nominal policy, the barrier definition and the ground-truth evaluation set:
 
-  A   unfiltered policy (rows evaluated passively on the pruned set)
-  B   naive per-row CBF over every scene part, geometry only (no contact exemptions)
-  B+  every part with the plan's contact exemptions (oracle form of a target-exempt filter)
-  C   SESAME: pruned, exempted parts (ours)
+  pruning   on: rows only for the nodes admitted by the swept-volume stage and the semantic classifier
+            off: every scene-graph node is a row (the plan's contact exemptions still apply)
+  filter    on: the QP corrects the action
+            off: rows are evaluated but the action passes unchanged (reference run, no classifier call)
 
 Nominal policies: ``nav`` (pure-pursuit follower on the planned polyline, the navigation-stack
 analog) and ``smolvla`` (lerobot/smolvla_robocasa through lerobot's own processing pipeline).
@@ -21,7 +21,6 @@ import json
 import os
 from pathlib import Path
 import time
-from typing import Sequence
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
@@ -51,7 +50,6 @@ RENAME_MAP = {
     "observation.images.robot0_eye_in_hand": "observation.images.camera3",
 }
 POLICY_PATH = "lerobot/smolvla_robocasa"
-ARMS = ("A", "B", "B+", "C")
 CLASSIFIERS = {
     "none": lambda: None,
     "prior": CategoryPriorClassifier,
@@ -97,7 +95,7 @@ class SesameRoboCasaEnv(RoboCasaEnv):
     """
 
     def __init__(self, task: str, *, env_kwargs: dict | None = None, **kwargs):
-        env_kwargs = {"initialization_noise": None, **(env_kwargs or {})}  # no random joint noise: arms must start identically
+        env_kwargs = {"initialization_noise": None, **(env_kwargs or {})}  # no random joint noise: every run of a seed starts identically
         for key in ("split", "obj_registries"):  # lerobot RoboCasaEnv arguments, not Kitchen kwargs
             if key in env_kwargs:
                 kwargs[key] = env_kwargs.pop(key)
@@ -153,13 +151,12 @@ class SesameRoboCasaEnv(RoboCasaEnv):
 class SafetyFilterEnv(gym.Wrapper):
     """Per-row semantic safety filter in front of ``SesameRoboCasaEnv``; segments come from a plan."""
 
-    def __init__(self, env: SesameRoboCasaEnv, *, arm: str, classifier: str = "prior", policy: FilterPolicy = FilterPolicy(), graph_noise: dict | None = None, noise_seed: int = 0):
+    def __init__(self, env: SesameRoboCasaEnv, *, pruning: bool = True, filter: bool = True, classifier: str = "prior", policy: FilterPolicy = FilterPolicy(), graph_noise: dict | None = None, noise_seed: int = 0):
         super().__init__(env)
-        if arm not in ARMS:
-            raise ValueError(arm)
-        self.arm, self.classifier_kind, self.policy = arm, classifier, policy
+        self.pruning, self.filter_on, self.classifier_kind, self.policy = pruning, filter, classifier, policy
+        self.tag = run_tag(pruning, filter)
         self.graph_noise, self.noise_seed = graph_noise, noise_seed
-        self._classifier = CLASSIFIERS[classifier]() if arm == "C" else None
+        self._classifier = CLASSIFIERS[classifier]() if (pruning and filter) else None  # the classifier only runs when it can change something
 
     # ------------------------------------------------------------------ robot geometry
 
@@ -264,21 +261,16 @@ class SafetyFilterEnv(gym.Wrapper):
         self.oracle_fragments, self.fragments = self.oracle_graph.fragments(), self.graph.fragments()
 
     def begin_segment(self, index: int) -> None:
-        """Prune for one segment (an epoch) and fix the row set of every arm."""
+        """Prune for one segment (an epoch) and fix its row set."""
         if index != self.segment_index:
             self.replans = 0
         self.segment_index = index
         seg = self.segments[index]
         self.bundle = build_bundle(seg, self.graph, classifier=self._classifier, base_circumscribed_radius_m=self.base_radius, policy_margin_m=self.policy.policy_margin_m, eef_reach_m=1.0 * CONTROL_DT_S)
         self.bundles.append(self.bundle)
-        all_nodes = [n.node_id for n in self.graph.obstacle_nodes()]
-        self.row_ids = {
-            "A": self.graph.fragment_ids_of(self.bundle.admitted_ids, exempt=seg.exempt_ids),
-            "B": self.graph.fragment_ids_of(all_nodes),
-            "B+": self.graph.fragment_ids_of(all_nodes, exempt=seg.exempt_ids),
-            "C": self.graph.fragment_ids_of(self.bundle.admitted_ids, exempt=seg.exempt_ids),
-        }[self.arm]
-        # ground truth: every non-exempt node of the oracle graph (and nothing drivable by construction), identical for every arm
+        row_nodes = self.bundle.admitted_ids if self.pruning else [n.node_id for n in self.graph.obstacle_nodes()]
+        self.row_ids = self.graph.fragment_ids_of(row_nodes, exempt=seg.exempt_ids)
+        # ground truth: every non-exempt node of the oracle graph (and nothing drivable by construction), the same for every switch setting
         self.exempt_nodes = set(seg.exempt_ids) | set(self.gt_passable)
         self.eval_ids = self.oracle_graph.fragment_ids_of([n.node_id for n in self.oracle_graph.obstacle_nodes()], exempt=self.exempt_nodes)
         self.epoch += 1
@@ -300,7 +292,7 @@ class SafetyFilterEnv(gym.Wrapper):
     def step(self, action):
         state = self.robot_state(bool(action[MODE_INDEX] >= 0.5))
         self._prev_pose = (state.base_position[:2].copy(), float(np.arctan2(state.base_rotation[1, 0], state.base_rotation[0, 0])))
-        a_out, receipt = self.filter.filter_action(tick=self.tick, action=action, state=state, fragments=self.fragments, base_rows_for=self.row_ids, eef_rows_for=self.row_ids, passive=(self.arm == "A"))
+        a_out, receipt = self.filter.filter_action(tick=self.tick, action=action, state=state, fragments=self.fragments, base_rows_for=self.row_ids, eef_rows_for=self.row_ids, passive=not self.filter_on)
         rec = receipt.as_dict()
         rec.update(segment=self.segment_index, epoch=self.epoch)
         self.receipts.append(rec)
@@ -382,7 +374,9 @@ class SafetyFilterEnv(gym.Wrapper):
             outcome = "unsafe_fail" if violated else "safe_fail"
         return {
             "task_description": self.env.task_description,
-            "arm": self.arm,
+            "pruning": self.pruning,
+            "filter": self.filter_on,
+            "tag": self.tag,
             "outcome": outcome,
             "success": success,
             "task_success_robocasa": bool(getattr(self, "task_success_robocasa", False)),
@@ -570,15 +564,21 @@ class MissionRunner:
             if stalled or not env.segment_done():
                 break
             if env.segment_index + 1 >= len(env.segments):
-                success = True  # every plan segment completed (the same plan for every arm)
+                success = True  # every plan segment completed (the same plan for every switch setting)
                 break
             env.begin_segment(env.segment_index + 1)
         env.task_success_robocasa = bool(env.rs._check_success())
         return success, stalled
 
 
-def run_episode(*, task: str, seed: int, arms: Sequence[str], nominal: str, classifier: str, out_dir: Path, plan_path: str | None = None, env_kwargs: dict | None = None, max_steps: int | None = None, graph_noise: dict | None = None, video: bool = False) -> list[dict]:
-    """Run every arm of one (task, seed) in this process; each arm hard-resets the kitchen from the same seed (identical scene, fresh controllers)."""
+def run_tag(pruning: bool, filter: bool) -> str:
+    """Output-file tag of a switch setting: "sesame" for the defaults, else what is switched off."""
+    off = [name for name, on in (("noprune", pruning), ("nofilter", filter)) if not on]
+    return "_".join(off) or "sesame"
+
+
+def run_episode(*, task: str, seed: int, nominal: str, classifier: str, out_dir: Path, pruning: bool = True, filter: bool = True, plan_path: str | None = None, env_kwargs: dict | None = None, max_steps: int | None = None, graph_noise: dict | None = None, video: bool = False) -> dict:
+    """Run one (task, seed) with one switch setting in this process (the kitchen is hard-reset from the seed)."""
     import sesame_lite.tasks  # noqa: F401  (registers the task variants with robosuite)
     from sesame_lite.planner import load_plan
 
@@ -589,29 +589,22 @@ def run_episode(*, task: str, seed: int, arms: Sequence[str], nominal: str, clas
         env_kwargs = {**plan.get("env_kwargs", {}), **(env_kwargs or {})}
         max_steps = max_steps or plan.get("horizon")
     base_env = SesameRoboCasaEnv(task, env_kwargs=env_kwargs, episode_length=max_steps)
-    vla, results, snapshots = None, [], set()
-    for arm in arms:
-        t0 = time.time()
-        env = SafetyFilterEnv(base_env, arm=arm, classifier=classifier, graph_noise=graph_noise)
-        obs, _ = env.reset(seed=seed, plan=plan)
-        snapshots.add(env.oracle_graph.snapshot_id)
-        if vla is None and (nominal == "smolvla" or any(s.kind == VLA for s in env.segments)):
-            vla = SmolVLAPolicy(task)
-        recorder = None
-        if video:
-            from sesame_lite.viz import EpisodeRecorder
+    t0 = time.time()
+    env = SafetyFilterEnv(base_env, pruning=pruning, filter=filter, classifier=classifier, graph_noise=graph_noise)
+    obs, _ = env.reset(seed=seed, plan=plan)
+    vla = SmolVLAPolicy(task) if (nominal == "smolvla" or any(s.kind == VLA for s in env.segments)) else None
+    recorder = None
+    if video:
+        from sesame_lite.viz import EpisodeRecorder
 
-            recorder = EpisodeRecorder(env)
-        success, stalled = MissionRunner(env, vla=vla, on_frame=recorder).run(obs)
-        result = {"task": task, "seed": seed, "nominal": nominal, "classifier": classifier, "wall_s": time.time() - t0, **env.summary(success, stalled)}
-        stem = f"{task}_s{seed}_{arm.replace('+', 'plus')}"
-        env.dump(out_dir / f"{stem}.json", result)
-        if recorder is not None:
-            recorder.finish(result)
-            recorder.save(out_dir / f"{stem}.mp4")
-            del recorder
-        results.append(result)
-    if len(snapshots) > 1:
-        print(f"WARNING: scene differed across arms for seed {seed}: {sorted(snapshots)}")
+        recorder = EpisodeRecorder(env)
+    success, stalled = MissionRunner(env, vla=vla, on_frame=recorder).run(obs)
+    result = {"task": task, "seed": seed, "nominal": nominal, "classifier": classifier, "wall_s": time.time() - t0, **env.summary(success, stalled)}
+    stem = f"{task}_s{seed}_{run_tag(pruning, filter)}"
+    env.dump(out_dir / f"{stem}.json", result)
+    if recorder is not None:
+        recorder.finish(result)
+        recorder.save(out_dir / f"{stem}.mp4")
+        del recorder
     base_env.close()
-    return results
+    return result

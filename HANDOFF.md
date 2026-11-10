@@ -1,3 +1,5 @@
+> 2026-11-10: the arm letters A / B / B+ / C were replaced by two switches, `pruning` and `filter` (defaults on = SESAME-3D; `--no-pruning` = old B+, `--no-filter` = old A, old B deleted). The text below keeps the old names.
+
 # Handoff: SESAME-3D lightweight study, laptop → GPU server (2026-11-04)
 
 This file is for the coding agent on the server. It covers what exists, what was verified and what

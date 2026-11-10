@@ -19,18 +19,18 @@ from sesame_lite.planner import NAVIGATION
 from sesame_lite.scene_graph import _raw_data, _raw_model
 
 RGBA = {
-    "row": (0.85, 0.15, 0.15, 0.40),  # constraint row in this arm
+    "row": (0.85, 0.15, 0.15, 0.40),  # constraint row in this run
     "passable": (0.15, 0.75, 0.30, 0.55),
     "irrelevant": (0.55, 0.55, 0.55, 0.35),
     "exempt": (0.15, 0.40, 0.95, 0.50),
     "outside": (1.0, 1.0, 1.0, 0.06),  # not a candidate (outside corridor / disc)
-    "passive": (0.80, 0.80, 0.80, 0.22),  # unfiltered arm: geometry shown, nothing enforced
+    "passive": (0.80, 0.80, 0.80, 0.22),  # filter off: geometry shown, nothing enforced
     "corridor": (0.20, 0.45, 0.90, 0.035),
     "path": (0.10, 0.30, 0.90, 0.9),
     "eef": (0.95, 0.85, 0.10, 0.9),
     "goal": (0.10, 0.80, 0.90, 0.9),
 }
-ARM_TITLES = {"A": "Baseline: no safety filter", "B": "Naive CBF: every object", "B+": "All objects, target exempt", "C": "SESAME-3D (ours)"}
+RUN_TITLES = {"sesame": "SESAME-3D", "noprune": "No pruning", "nofilter": "No filter", "noprune_nofilter": "No pruning, no filter"}
 
 
 def _quat_xyzw_to_mat(q):
@@ -46,7 +46,7 @@ def fragment_roles(env) -> dict[str, str]:
     for nid in env.graph.nodes:
         label = bundle.labels.get(nid)
         if nid in rows:
-            roles[nid] = "passive" if env.arm == "A" else "row"
+            roles[nid] = "row" if env.filter_on else "passive"
         elif nid in seg.exempt_ids:
             roles[nid] = "exempt"
         elif label == "passable":
@@ -54,7 +54,7 @@ def fragment_roles(env) -> dict[str, str]:
         elif label == "irrelevant":
             roles[nid] = "irrelevant"
         elif nid in bundle.candidate_ids:
-            roles[nid] = "row" if env.arm != "A" else "passive"
+            roles[nid] = "row" if env.filter_on else "passive"
         else:
             roles[nid] = "outside"
     return roles
@@ -169,9 +169,9 @@ class EpisodeRecorder:
         rec, gt = env.receipts[-1], env.ground_truth[-1]
         draw = ImageDraw.Draw(frame, "RGBA")
         draw.rectangle([0, 0, frame.width, 46], fill=(0, 0, 0, 170))
-        draw.text((12, 6), ARM_TITLES[env.arm], font=self.font, fill=(255, 255, 255))
+        draw.text((12, 6), RUN_TITLES[env.tag], font=self.font, fill=(255, 255, 255))
         h = gt["h_min_all"]
-        rows = "unfiltered" if env.arm == "A" else f"constraints {len(env.row_ids)} parts (active {rec['n_rows']})"
+        rows = "unfiltered" if not env.filter_on else f"constraints {len(env.row_ids)} parts (active {rec['n_rows']})"
         status = f"t = {env.tick * 0.05:4.1f} s   {rows}   clearance {100 * h:+5.1f} cm" if h is not None else f"t = {env.tick * 0.05:4.1f} s   {rows}"
         hit = bool(gt["touched"]) or (h is not None and h < -env.policy.policy_margin_m)
         if gt["touched"]:

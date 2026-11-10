@@ -44,7 +44,7 @@ def main(path: Path) -> None:
 
     lines = [
         f"episode: {path.name}",
-        f"task: {result.get('task')}  seed: {result.get('seed')}  arm: {result.get('arm')}",
+        f"task: {result.get('task')}  seed: {result.get('seed')}  pruning: {result.get('pruning')}  filter: {result.get('filter')}",
         f"success: {result['success']}  steps: {result['steps']}  stalled: {result['stalled']}  "
         f"start inside a margin: {result['start_violation']}",
         f"contact ticks (with non-exempt nodes): {result['contact_ticks']}  nodes touched: {result.get('contact_nodes')}",

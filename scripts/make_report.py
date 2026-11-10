@@ -1,6 +1,6 @@
-"""REPORT.md for one matched-seed demo: per-arm table, filter evidence, semantic-prunability table.
+"""REPORT.md for one matched-seed demo: one column per switch setting, filter evidence, semantic-prunability table.
 
-    python scripts/make_report.py outputs/demo_nav --task NavigateKitchenMats --seed 0 --arms A B C
+    python scripts/make_report.py outputs/demo_nav --task NavigateKitchenMats --seed 0 --tags sesame nofilter
 """
 
 import argparse
@@ -13,21 +13,21 @@ ap = argparse.ArgumentParser()
 ap.add_argument("out_dir")
 ap.add_argument("--task", required=True)
 ap.add_argument("--seed", type=int, required=True)
-ap.add_argument("--arms", nargs="+", default=["A", "C"])
+ap.add_argument("--tags", nargs="+", default=["sesame"], help="run tags: sesame, noprune, nofilter")
 args = ap.parse_args()
 out = Path(args.out_dir)
-eps = {a: json.load(open(out / f"{args.task}_s{a and args.seed}_{a.replace('+', 'plus')}.json")) for a in args.arms}
-NAMES = {"A": "Baseline (no filter)", "B": "Naive CBF (all parts)", "B+": "All parts, task exempt", "C": "SESAME-3D"}
+eps = {t: json.load(open(out / f"{args.task}_s{args.seed}_{t}.json")) for t in args.tags}
+NAMES = {"sesame": "SESAME-3D", "noprune": "No pruning", "nofilter": "No filter", "noprune_nofilter": "No pruning, no filter"}
 m = 0.005
 
-lines = [f"# {args.task}, seed {args.seed}: baseline vs SESAME-3D", ""]
+lines = [f"# {args.task}, seed {args.seed}", ""]
 r0 = next(iter(eps.values()))["result"]
-lines += [f"Task sentence: *{r0['task_description']}*. Layout {r0['layout'].get('layout_id')} / style {r0['layout'].get('style_id')}, {r0['n_nodes']} 3DSG object nodes. Scene snapshot `{r0['snapshot_id']}`" + (" (identical across arms)." if len({e['result']['snapshot_id'] for e in eps.values()}) == 1 else " **(MISMATCH across arms)**."), ""]
+lines += [f"Task sentence: *{r0['task_description']}*. Layout {r0['layout'].get('layout_id')} / style {r0['layout'].get('style_id')}, {r0['n_nodes']} 3DSG object nodes. Scene snapshot `{r0['snapshot_id']}`" + (" (identical across runs)." if len({e['result']['snapshot_id'] for e in eps.values()}) == 1 else " **(MISMATCH across runs)**."), ""]
 
-# per-arm table
+# one column per run
 cols = ["outcome", "success (plan goal)", "RoboCasa success", "steps", "contact ticks", "min true h [cm]", "worst penetration [cm]", "severity [m s]", "rows / tick", "tick ms p50 / p99", "filtered ticks", "holds / infeasible", "classifier [s]", "start h [cm]"]
-lines.append("| | " + " | ".join(NAMES[a] for a in args.arms) + " |")
-lines.append("|---|" + "---|" * len(args.arms))
+lines.append("| | " + " | ".join(NAMES[t] for t in args.tags) + " |")
+lines.append("|---|" + "---|" * len(args.tags))
 def cell(r, c):
     return {
         "outcome": r["outcome"], "success (plan goal)": str(r["success"]), "RoboCasa success": str(r["task_success_robocasa"]), "steps": str(r["steps"]),
@@ -37,22 +37,22 @@ def cell(r, c):
         "classifier [s]": ", ".join(f"{x:.1f}" for x in r["classifier_latency_s"] if x) or "-", "start h [cm]": f"{100 * r['start_h']:.1f}" if r["start_h"] is not None else "-",
     }[c]
 for c in cols:
-    lines.append(f"| {c} | " + " | ".join(cell(eps[a]["result"], c) for a in args.arms) + " |")
+    lines.append(f"| {c} | " + " | ".join(cell(eps[t]["result"], c) for t in args.tags) + " |")
 lines.append("")
 
-# filter evidence: approach speed vs barrier for the SESAME arm
-if "C" in eps:
-    rec, gt = eps["C"]["receipts"], eps["C"]["ground_truth"]
+# filter evidence: approach speed vs barrier for the SESAME-3D run
+if "sesame" in eps:
+    rec, gt = eps["sesame"]["receipts"], eps["sesame"]["ground_truth"]
     pairs = [(g["h_min_all"], np.linalg.norm(r["u_applied"][:2])) for r, g in zip(rec, gt) if g["h_min_all"] is not None and r["outcome"] == "filtered" and 0 < g["h_min_all"] < 0.3]
     if pairs:
         h, v = np.array(pairs).T
-        lines += ["## Filter evidence (SESAME arm)", "", f"- Filtered ticks: {eps['C']['result']['filtered_ticks']}; holds {eps['C']['result']['holds']}; QP infeasible {eps['C']['result']['infeasible']}.",
+        lines += ["## Filter evidence (SESAME-3D)", "", f"- Filtered ticks: {eps['sesame']['result']['filtered_ticks']}; holds {eps['sesame']['result']['holds']}; QP infeasible {eps['sesame']['result']['infeasible']}.",
                   f"- On filtered ticks with 0 < h < 0.3 m the applied base speed stays under alpha*h - d (alpha = 1/s, d = 0.015 m/s): max(v - (h - 0.015)) = {np.max(v - (h - 0.015)):+.3f} m/s over {len(pairs)} ticks (<= 0 means the row bound is respected on the base block).",
-                  f"- Minimum true barrier after the start transient: {100 * eps['C']['result']['h_min_all']:.1f} cm (margin {100 * m:.1f} cm); recovery band entries: {eps['C']['result']['ticks_below_margin_all']} ticks below the margin.", ""]
+                  f"- Minimum true barrier after the start transient: {100 * eps['sesame']['result']['h_min_all']:.1f} cm (margin {100 * m:.1f} cm); recovery band entries: {eps['sesame']['result']['ticks_below_margin_all']} ticks below the margin.", ""]
 
 # prunability table
-if "C" in eps:
-    e = eps["C"]
+if "sesame" in eps:
+    e = eps["sesame"]
     bundle, graph = e["bundles"][0], {n["node_id"]: n for n in e["graph"]["nodes"]}
     seg = e["segments"][0]
     n_all = len(e["graph"]["nodes"])
@@ -68,12 +68,12 @@ if "C" in eps:
     dropped = [cid for cid in bundle["candidate_ids"] if cid not in bundle["admitted_ids"]]
     lines += ["", f"Nodes removed by semantics: {', '.join(dropped) or 'none'}. Nodes outside the corridor (never rows): {r0['n_nodes'] - len(bundle['candidate_ids'])}.", ""]
 
-lines += ["## Figures", "", f"![query](fig_{args.task}_s{args.seed}_query.pdf) ![traces](fig_{args.task}_s{args.seed}_traces.pdf) ![transcript](fig_{args.task}_s{args.seed}_transcript.pdf)", "", f"Videos: `{args.task}_s{args.seed}_<arm>.mp4`, side-by-side `{args.task}_s{args.seed}_side_by_side.mp4`."]
+lines += ["## Figures", "", f"![query](fig_{args.task}_s{args.seed}_query.pdf) ![traces](fig_{args.task}_s{args.seed}_traces.pdf) ![transcript](fig_{args.task}_s{args.seed}_transcript.pdf)", "", f"Videos: `{args.task}_s{args.seed}_<tag>.mp4`, side-by-side `{args.task}_s{args.seed}_side_by_side.mp4`."]
 (out / "REPORT.md").write_text("\n".join(lines))
 print("\n".join(lines[:40]))
 
-videos = [out / f"{args.task}_s{args.seed}_{a.replace('+', 'plus')}.mp4" for a in args.arms]
-if all(v.exists() for v in videos):
+videos = [out / f"{args.task}_s{args.seed}_{t}.mp4" for t in args.tags]
+if len(videos) > 1 and all(v.exists() for v in videos):
     from sesame_lite.viz import side_by_side
 
     side_by_side(videos, out / f"{args.task}_s{args.seed}_side_by_side.mp4")

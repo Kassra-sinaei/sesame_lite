@@ -5,7 +5,7 @@ mats already on the floor). The planner sees only the Hydra scene graph and the 
 
     bash scripts/llm/serve_qwen.sh &      # once
     MUJOCO_GL=egl .venv/bin/python -s scripts/plan_mission.py --plan plans/open_drawer.json --seed 100
-    MUJOCO_GL=egl .venv/bin/python -s scripts/run_episode_pi05.py --plan outputs/plans_llm/open_drawer_s100.json --seed 100 --arms A C
+    MUJOCO_GL=egl .venv/bin/python -s scripts/run_episode_pi05.py --plan outputs/plans_llm/open_drawer_s100.json --seed 100
 
 Writes outputs/plans_llm/<mission>_s<seed>.json (the plan, in plans/*.json format) and
 <mission>_s<seed>.transcript.json (every model message and tool result). The hand-written plan's roles, resolved
@@ -35,7 +35,7 @@ args = ap.parse_args()
 
 mission = load_plan(args.plan)
 base = SesameRoboCasaEnv(mission["task"], env_kwargs=dict(mission.get("env_kwargs", {})), episode_length=mission.get("horizon"))
-env = SafetyFilterEnv(base, arm="A")  # arm A: no classifier call; reset builds the scene and its scene graph
+env = SafetyFilterEnv(base, filter=False)  # no classifier call; reset builds the scene and its scene graph
 env.reset(seed=args.seed, plan=mission)
 task_instruction = env.env.task_description
 

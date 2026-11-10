@@ -1,12 +1,12 @@
 """Publication figures for one matched-seed demo, from the episode receipts only.
 
-    python scripts/make_figures.py outputs/demo_nav --task NavigateKitchenMats --seed 0 --arms A B C
+    python scripts/make_figures.py outputs/demo_nav --task NavigateKitchenMats --seed 0 --tags sesame nofilter
 
 Writes, next to the receipts:
-  fig_<task>_s<seed>_query.pdf       3DSG query of the SESAME arm (single column): every part's footprint coloured by its
+  fig_<task>_s<seed>_query.pdf       3DSG query of the SESAME-3D run (single column): every part's footprint coloured by its
                                      role (constraint, task-contact exempt, passable, irrelevant, outside the region),
                                      the swept corridor / manipulation disc, path, start and goal
-  fig_<task>_s<seed>_compare.pdf     arm comparison (double column): (a) trajectories with contacts, (b) true clearance over
+  fig_<task>_s<seed>_compare.pdf     run comparison (double column): (a) trajectories with contacts, (b) true clearance over
                                      every non-exempt part, (c) progress to the goal
   fig_<task>_s<seed>_transcript.pdf  the candidate list sent to the stage-2 classifier and the labels returned
 """
@@ -32,16 +32,16 @@ plt.rcParams.update({
 COL1, COL2 = 3.5, 7.16  # IEEE column widths [in]
 ROLE_COLOR = {"row": "#C0392B", "exempt": "#2A6FD0", "passable": "#2E9E5B", "irrelevant": "#9A9A9A", "outside": "#E6E6E6"}
 ROLE_LABEL = {"row": "constraint row", "exempt": "task-contact exempt", "passable": "passable (no row)", "irrelevant": "irrelevant (no row)", "outside": "outside the region"}
-ARM = {  # Okabe-Ito colours + line styles (colour is never the only cue)
-    "A": dict(label="No filter", color="#7F7F7F", ls="-", lw=1.1),
-    "B": dict(label="Naive CBF (all objects)", color="#E69F00", ls="--", lw=1.3),
-    "B+": dict(label="All objects, target exempt", color="#CC79A7", ls="-.", lw=1.2),
-    "C": dict(label="SESAME-3D (ours)", color="#0072B2", ls="-", lw=1.8),
+RUN = {  # Okabe-Ito colours + line styles (colour is never the only cue)
+    "nofilter": dict(label="No filter", color="#7F7F7F", ls="-", lw=1.1),
+    "noprune": dict(label="No pruning", color="#CC79A7", ls="-.", lw=1.2),
+    "noprune_nofilter": dict(label="No pruning, no filter", color="#E69F00", ls="--", lw=1.3),
+    "sesame": dict(label="SESAME-3D", color="#0072B2", ls="-", lw=1.8),
 }
 
 
-def load(out_dir, task, seed, arm):
-    return json.load(open(Path(out_dir) / f"{task}_s{seed}_{arm.replace('+', 'plus')}.json"))
+def load(out_dir, task, seed, tag):
+    return json.load(open(Path(out_dir) / f"{task}_s{seed}_{tag}.json"))
 
 
 def footprint(node):
@@ -153,7 +153,7 @@ def query_map(ep, out_path):
 
 
 def compare(eps, out_path, margin_m=0.005):
-    ref = next((e for e in eps if e["result"]["arm"] == "C"), eps[-1])
+    ref = next((e for e in eps if e["result"]["tag"] == "sesame"), eps[-1])
     lo, hi = mission_extent(ref, pad=0.25)
     goal = np.asarray(ref["segments"][0]["path_polyline_xy"][-1]) if ref["segments"][0]["path_polyline_xy"] else None
     fig = plt.figure(figsize=(COL2, 2.35), layout="constrained")
@@ -161,7 +161,7 @@ def compare(eps, out_path, margin_m=0.005):
     ax = axs["map"]
     draw_parts(ax, ref, part_roles(ref), muted=True, z_max=1.6)
     for ep in eps:
-        a = ARM[ep["result"]["arm"]]
+        a = RUN[ep["result"]["tag"]]
         xy = np.array([g["base_xy"] for g in ep["ground_truth"]])
         ax.plot(xy[:, 0], xy[:, 1], color=a["color"], ls=a["ls"], lw=a["lw"], zorder=5)
         hit = np.array([g["base_xy"] for g in ep["ground_truth"] if g["touched"]])
@@ -176,7 +176,7 @@ def compare(eps, out_path, margin_m=0.005):
 
     ax = axs["h"]
     for ep in eps:
-        a = ARM[ep["result"]["arm"]]
+        a = RUN[ep["result"]["tag"]]
         t = np.arange(len(ep["ground_truth"])) * 0.05
         h = np.array([g["h_min_all"] if g["h_min_all"] is not None else np.nan for g in ep["ground_truth"]])
         ax.plot(t, 100 * h, color=a["color"], ls=a["ls"], lw=a["lw"])
@@ -192,7 +192,7 @@ def compare(eps, out_path, margin_m=0.005):
 
     ax = axs["d"]
     for ep in eps:
-        a = ARM[ep["result"]["arm"]]
+        a = RUN[ep["result"]["tag"]]
         if goal is None:
             break
         xy = np.array([g["base_xy"] for g in ep["ground_truth"]])
@@ -206,7 +206,7 @@ def compare(eps, out_path, margin_m=0.005):
     ax.set_ylabel("distance to goal [m]")
     ax.set_title("(c) progress", loc="left")
 
-    handles = [Line2D([], [], color=ARM[e["result"]["arm"]]["color"], ls=ARM[e["result"]["arm"]]["ls"], lw=ARM[e["result"]["arm"]]["lw"], label=ARM[e["result"]["arm"]]["label"]) for e in eps]
+    handles = [Line2D([], [], color=RUN[e["result"]["tag"]]["color"], ls=RUN[e["result"]["tag"]]["ls"], lw=RUN[e["result"]["tag"]]["lw"], label=RUN[e["result"]["tag"]]["label"]) for e in eps]
     handles += [Line2D([], [], marker="x", ls="", color="#C0392B", ms=4, label="contact"), Line2D([], [], marker="o", ls="", color="white", mec="black", ms=4, label="end: goal"),
                 Line2D([], [], marker="s", ls="", color="white", mec="black", ms=4, label="end: stalled")]
     fig.legend(handles=handles, loc="outside upper center", ncol=len(handles), frameon=False, handlelength=2.0, columnspacing=1.2)
@@ -258,11 +258,11 @@ if __name__ == "__main__":
     ap.add_argument("out_dir")
     ap.add_argument("--task", required=True)
     ap.add_argument("--seed", type=int, required=True)
-    ap.add_argument("--arms", nargs="+", default=["A", "C"])
+    ap.add_argument("--tags", nargs="+", default=["sesame"], help="run tags: sesame, noprune, nofilter")
     args = ap.parse_args()
-    eps = [load(args.out_dir, args.task, args.seed, a) for a in args.arms]
+    eps = [load(args.out_dir, args.task, args.seed, t) for t in args.tags]
     stem = Path(args.out_dir) / f"fig_{args.task}_s{args.seed}"
-    ours = next((e for e in eps if e["result"]["arm"] == "C"), eps[-1])
+    ours = next((e for e in eps if e["result"]["tag"] == "sesame"), eps[-1])
     query_map(ours, f"{stem}_query.pdf")
     compare(eps, f"{stem}_compare.pdf")
     if ours["bundles"][0]["classification"]:

@@ -3,7 +3,7 @@
 Identical CLI and behaviour; the only change is the policy class that ``sesame_lite.env.run_episode`` instantiates
 for VLA segments (``--nominal smolvla`` / ``auto`` now means "the VLA", i.e. pi0.5). The original files are untouched.
 
-    MUJOCO_GL=egl python -s scripts/run_episode_pi05.py --plan plans/open_drawer.json --seed 0 --arms A C --video
+    MUJOCO_GL=egl python -s scripts/run_episode_pi05.py --plan plans/open_drawer.json --seed 0 --video
 """
 
 import os

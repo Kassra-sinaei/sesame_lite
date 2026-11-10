@@ -1,4 +1,4 @@
-"""Aggregate episode receipts into the per-arm table (episode-level statistics, matched seeds).
+"""Aggregate episode receipts into one table per switch setting (episode-level statistics, matched seeds).
 
     python scripts/summarize.py outputs/demo_nav [--csv table.csv]
 """
@@ -17,16 +17,17 @@ ap.add_argument("out_dir")
 ap.add_argument("--csv", default=None)
 args = ap.parse_args()
 
-rows = [json.load(open(f))["result"] for f in sorted(glob.glob(os.path.join(args.out_dir, "*.json")))]
-arms = sorted({r["arm"] for r in rows}, key=lambda a: ("A", "B", "B+", "C").index(a))
+rows = [json.load(open(f))["result"] for f in sorted(glob.glob(os.path.join(args.out_dir, "*.json"))) if not f.endswith(".dsg.json")]  # skip the graph files
+TAGS = ("sesame", "noprune", "nofilter", "noprune_nofilter")
+tags = sorted({r["tag"] for r in rows}, key=TAGS.index)
 
-# matched scenes: every arm of a seed must have seen the same oracle graph
+# matched scenes: every run of a seed must have seen the same oracle graph
 by_seed = collections.defaultdict(dict)
 for r in rows:
-    by_seed[(r["task"], r["seed"])][r["arm"]] = r["snapshot_id"]
+    by_seed[(r["task"], r["seed"])][r["tag"]] = r["snapshot_id"]
 mismatch = [k for k, v in by_seed.items() if len(set(v.values())) > 1]
 if mismatch:
-    print("WARNING: scene mismatch across arms for", mismatch)
+    print("WARNING: scene mismatch across runs of the same seed for", mismatch)
 
 
 def rate(rs, pred):
@@ -55,13 +56,13 @@ cols = [
     ("classifier s (mean)", lambda rs: f"{np.mean([x for r in rs for x in r['classifier_latency_s'] if x]):.1f}" if any(x for r in rs for x in r["classifier_latency_s"]) else "-"),
     ("classifier fallbacks", lambda rs: sum(r["classifier_fallback"] for r in rs)),
 ]
-table = {name: {arm: fn([r for r in rows if r["arm"] == arm]) for arm in arms} for name, fn in cols}
+table = {name: {tag: fn([r for r in rows if r["tag"] == tag]) for tag in tags} for name, fn in cols}
 width = max(len(n) for n, _ in cols)
-print(f"{'':{width}s} " + " ".join(f"{a:>18s}" for a in arms))
+print(f"{'':{width}s} " + " ".join(f"{t:>18s}" for t in tags))
 for name, _ in cols:
-    print(f"{name:{width}s} " + " ".join(f"{str(table[name][a]):>18s}" for a in arms))
+    print(f"{name:{width}s} " + " ".join(f"{str(table[name][t]):>18s}" for t in tags))
 if args.csv:
     with open(args.csv, "w") as f:
-        f.write("metric," + ",".join(arms) + "\n")
+        f.write("metric," + ",".join(tags) + "\n")
         for name, _ in cols:
-            f.write(name + "," + ",".join(str(table[name][a]) for a in arms) + "\n")
+            f.write(name + "," + ",".join(str(table[name][t]) for t in tags) + "\n")

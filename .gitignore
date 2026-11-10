@@ -4,3 +4,4 @@ __pycache__/
 *.mp4
 *.log
 .ipynb_checkpoints/
+third_party/

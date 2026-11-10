@@ -323,7 +323,7 @@ class PruningBundle:
     #: The classification record behind the labels (version, model identity,
     #: fallback_used, request/response digests, error detail). Without it a
     #: silent all-obstacle fallback is indistinguishable from a genuine
-    #: obstacle verdict (r2 s202 arm C labelled the curtain obstacle in all
+    #: obstacle verdict (r2 s202, the SESAME run, labelled the curtain obstacle in all
     #: four bundles and the evidence could not say why).
     classification: Mapping[str, object] | None = None
 
