@@ -1,12 +1,54 @@
 {
   "mission": "pick_place_far",
   "task": "PickPlaceSinkToCounterFar",
-  "description": "Drive from the far side of the kitchen to the sink, then pick the object from the sink and place it on the container on the counter (VLA). Reference plan: NAVIGATION to the sink, then one VLA pick-and-place segment.",
+  "description": "Drive from the far side of the kitchen to the sink, then pick the object from the sink and place it on the container on the counter (VLA). Reference plan: NAVIGATION to the sink, then one VLA pick-and-place segment; the sink, the picked object and the container are task-contact exempt (Kasra, 2026-11-11); everything else stays protected.",
   "env_kwargs": {},
   "horizon": 1200,
-  "roles": {"sink": {"fixture_ref": "sink"}},
+  "roles": {
+    "sink": {
+      "fixture_ref": "sink"
+    },
+    "object": {
+      "object": "obj"
+    },
+    "container": {
+      "object": "container"
+    }
+  },
   "segments": [
-    {"kind": "NAVIGATION", "skill": "navigate", "goal": {"role": "sink", "standoff": true}, "done": {"check": "base_near_goal", "radius": 0.2}},
-    {"kind": "VLA", "skill": "pick_and_place", "targets": ["sink"], "exempt": [{"role": "sink"}], "done": {"check": "task_success"}}
+    {
+      "kind": "NAVIGATION",
+      "skill": "navigate",
+      "goal": {
+        "role": "sink",
+        "standoff": true
+      },
+      "done": {
+        "check": "base_near_goal",
+        "radius": 0.2
+      }
+    },
+    {
+      "kind": "VLA",
+      "skill": "pick_and_place",
+      "targets": [
+        "object",
+        "container"
+      ],
+      "exempt": [
+        {
+          "role": "sink"
+        },
+        {
+          "role": "object"
+        },
+        {
+          "role": "container"
+        }
+      ],
+      "done": {
+        "check": "task_success"
+      }
+    }
   ]
 }

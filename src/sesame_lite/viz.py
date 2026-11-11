@@ -8,7 +8,8 @@ World view (free camera; the policy's cameras are untouched), per tick:
   - the planned path and its corridor (navigation) or the manipulation disc;
   - a status strip (time, QP outcome, rows, smallest h, true clearance, closest robot link and object) and a
     marker on every relaxed or held tick; the agent-view frame the policy received as an inset.
-A second stream follows the robot from close by with its spheres over its geometry (robot_spheres.mp4, item 1).
+Navigation segments are seen from above; a manipulation segment from behind the robot (the view switches when it
+begins). A second stream follows the robot from close by with its spheres over its geometry (robot_spheres.mp4, item 1).
 Walls are drawn translucent.
 """
 
@@ -142,7 +143,9 @@ class EpisodeRecorder:
 
     def __init__(self, env, *, width=960, height=720):
         self.env, self.frames, self.robot_frames = env, [], []
+        self.size = (width, height)
         self.world = WorldRenderer(env, width=width, height=height, view="bird" if env.segments[0].kind == NAVIGATION else "three_quarter")
+        self.world_segment = 0 if env.segments[0].kind == NAVIGATION else None  # the bird view belongs to segment 0
         self.close = WorldRenderer(env, width=480, height=480, view="three_quarter")
         self.font, self.small = _font(30), _font(21)
 
@@ -152,6 +155,9 @@ class EpisodeRecorder:
         self.close.cam.lookat[:] = np.r_[base[:2], 0.6]
         self.close.cam.distance, self.close.cam.azimuth, self.close.cam.elevation = 3.0, np.degrees(yaw) + 25.0, -18.0  # from behind, kitchen hidden
         self.robot_frames.append(self.close.render(robot_only=True))
+        if env.segment.kind != NAVIGATION and self.world_segment is not None:  # a manipulation segment after driving: view it from close by
+            self.world.renderer.close()
+            self.world, self.world_segment = WorldRenderer(env, width=self.size[0], height=self.size[1], view="three_quarter"), None
         frame = Image.fromarray(self.world.render())
         cam = getattr(env.env, "last_raw_obs", {}).get("video.robot0_agentview_left")
         if cam is not None:
@@ -167,7 +173,7 @@ class EpisodeRecorder:
             draw.rectangle([8, 54, 24 + w, 86], fill=(200, 40, 40, 230))
             draw.text((16, 58), label, font=self.small, fill=(255, 255, 255))
         h, ht = rec["h_min"], gt["clearance"]
-        line1 = f"QP {rec['outcome']}   rows {rec['n_pairs']} ({rec['n_rows_qp']} can bind)   smallest h {'-' if h is None else f'{100 * h:+5.1f} cm'}   true clearance {'-' if ht is None else f'{100 * ht:+5.1f} cm'}"
+        line1 = f"QP {rec['outcome']}   rows {rec['n_pairs']} ({rec['n_rows_qp']} can bind)   smallest h {'-' if h is None else f'{100 * h:+5.1f} cm'}   true clearance {'> 1 m' if ht is None else f'{100 * ht:+5.1f} cm'}"
         closest = "-"
         if rec["h_min_pair"] is not None:
             _, link, obj = rec["h_min_pair"]

@@ -3,7 +3,8 @@
     .venv/bin/python scripts/timeline.py --episode outputs/demos/nav_clutter/NavigateKitchenClutter_s100_sesame.json
 
 Over time, from the episode's receipts and ground truth: (a) the smallest barrier value h of the rows and the true
-clearance (every robot sphere against the oracle boxes: of all non-exempt objects, and of the rows' objects only), with contact ticks; (b) the nominal
+clearance (every robot sphere against the collision geometry: of all non-exempt objects, and of the rows' objects only;
+and, for comparison only, against the oracle boxes), with contact ticks; (b) the nominal
 and the filtered joint-velocity command (base and arm norms); (c) the QP outcome per tick; (d) the rows per tick (all
 pairs, and those some u in U could violate); (e) the filter's time per tick.
 """
@@ -34,11 +35,13 @@ t = 0.05 * np.array([r["tick"] for r in rec])
 h = np.array([np.nan if r["h_min"] is None else r["h_min"] for r in rec])
 truth = np.array([np.nan if g["clearance"] is None else g["clearance"] for g in gt])
 truth_rows = np.array([np.nan if g["clearance_rows"] is None else g["clearance_rows"] for g in gt])
+box = np.array([np.nan if g.get("box_clearance") is None else g["box_clearance"] for g in gt])
 contact = np.array([bool(g["touched"]) for g in gt])
 u_nom, u = np.array([r["u_nominal"] for r in rec]), np.array([r["u_applied"] for r in rec])
 
 fig, axs = plt.subplots(5, 1, figsize=(7.16, 6.4), sharex=True, layout="constrained", gridspec_kw=dict(height_ratios=[2.2, 1.6, 0.5, 1.0, 1.0]))
 ax = axs[0]
+ax.plot(t, 100 * box, color="#E8B4A0", lw=1.0, ls=":", label="clearance to the oracle\nboxes (comparison)")
 ax.plot(t, 100 * truth, color="#D9D9D9", lw=2.4, label="true clearance, all\nnon-exempt objects")
 ax.plot(t, 100 * truth_rows, color="#7F7F7F", lw=1.4, label="true clearance, the\nrows' objects")
 ax.plot(t, 100 * h, color="black", lw=0.8, label="smallest barrier\nvalue h of the rows")

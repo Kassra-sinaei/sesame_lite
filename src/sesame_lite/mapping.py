@@ -49,7 +49,7 @@ class MappingParams:
     truncation_voxels: int = 3
     max_weight: float = 1.0e7
     bounding_box_type: str = "OBB"
-    min_cluster_size: int = 10  # Hydra's habitat default is 40; lowered once on the design scene: the flour bag had 39 vertices (REPORT.md)
+    min_cluster_size: int = 4  # Hydra's habitat default is 40; 10 for the 39-vertex flour bag; 4 (Kasra, 2026-11-11) for the tomato in the sink (4 vertices at 5 cm voxels)
     camera_height_m: float = 1.2
     yaw_step_deg: float = 30.0
     pitches_deg: tuple[float, ...] = (-10.0, -45.0)
@@ -57,6 +57,8 @@ class MappingParams:
     route_min_clearance_m: float = 0.3
     large_surface_m2: float = 0.5  # vertical box faces at least this large get a view within route_view_angle_deg
     route_view_angle_deg: float = 45.0  # the route adds views until every large vertical surface is seen this frontally
+    receptacle_labels: tuple[str, ...] = ("sink",)  # fixtures the route also looks down into (a basin lies below its rim)
+    receptacle_view_height_m: float = 0.5  # those views: this far above the fixture's box top, 0.2 m off its centre
     frame_dt_s: float = 0.1  # timestamp spacing between frames
     full_update_separation_s: float = 1.0  # Hydra extracts mesh and objects at most this often (timestamp time)
     labels: str = "instance"  # "instance" (default) or "category" (the check of 4.8 item 5)
@@ -372,6 +374,34 @@ def targeted_views(oracle_graph: SceneGraph, poses: list, params: MappingParams)
     return extra, report
 
 
+def receptacle_views(oracle_graph: SceneGraph, params: MappingParams) -> tuple[list, dict]:
+    """Views looking down into receptacle fixtures (params.receptacle_labels). The base route's camera stands on the
+    floor at camera height, so it sees into a sink's basin only at a grazing angle over the rim (pick_place_far, seed
+    100: 16 of 912 frames saw the tomato in the sink, at most 61 pixels, and Hydra built no mesh there). For each such
+    fixture: four positions 0.2 m from its box centre (+x, -x, +y, -y), receptacle_view_height_m above its box top,
+    each looking at the box centre. A position inside another oracle box is dropped (listed). Uses the oracle boxes
+    (the operator's route may use ground truth)."""
+    extra, report = [], {"views": [], "dropped_inside_a_box": []}
+    boxes = {i: n.aabb() for i, n in oracle_graph.nodes.items()}
+    for oracle_id, node in oracle_graph.nodes.items():
+        if node.category not in params.receptacle_labels:
+            continue
+        lo, hi = boxes[oracle_id]
+        c = (lo + hi) / 2
+        for dx, dy in ((0.2, 0.0), (-0.2, 0.0), (0.0, 0.2), (0.0, -0.2)):
+            pos = np.array([c[0] + dx, c[1] + dy, hi[2] + params.receptacle_view_height_m])
+            inside = [o for o, (blo, bhi) in boxes.items() if o != oracle_id and np.all(pos >= blo) and np.all(pos <= bhi)]
+            name = f"O:{oracle_id} {node.category} from ({dx:+.1f}, {dy:+.1f})"
+            if inside:
+                report["dropped_inside_a_box"].append(f"{name}: inside {inside[0]}")
+                continue
+            look = c - pos
+            yaw, pitch = float(np.degrees(np.arctan2(look[1], look[0]))), float(np.degrees(np.arcsin(look[2] / np.linalg.norm(look))))
+            extra.append((pos, yaw, pitch))
+            report["views"].append(f"{name}, pitch {pitch:+.0f}")
+    return extra, report
+
+
 # --------------------------------------------------------------------------- Hydra
 
 
@@ -452,7 +482,8 @@ def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: P
     table = instance_table(rs_env, oracle_graph, lookup, oracle_graph.labels, params.labels)
     poses, skipped = mapping_route(oracle_graph, rs_env, params)
     extra, coverage = targeted_views(oracle_graph, poses, params)
-    poses = poses + extra
+    into, receptacles = receptacle_views(oracle_graph, params)
+    poses = poses + extra + into
     cam = MappingCamera(rs_env, params, table["geom_label"], seed)
     views = []  # what each frame saw (pose, depth, labels): the map side's record for the observation-angle rule
 
@@ -475,7 +506,8 @@ def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: P
         "oracle_of_label": {str(k): v for k, v in table["oracle_of_label"].items()},  # evaluation side only
         "labelspace": table["labelspace"],
         "params": params.as_dict(),
-        "route": {"camera_poses": len(poses), "targeted_poses": len(extra), "places_skipped_inside_robot": skipped, "large_vertical_surfaces": coverage},
+        "route": {"camera_poses": len(poses), "targeted_poses": len(extra), "places_skipped_inside_robot": skipped, "large_vertical_surfaces": coverage,
+                  "receptacle_views": receptacles},
         "camera_check": camera_check,
         "hydra": stats,
         "seconds": round(t_map, 1),

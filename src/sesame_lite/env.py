@@ -11,7 +11,8 @@ What runs is set by two switches (defaults: both on, the SESAME-3D method). Ever
 
 Every tick: u_nom (base: the command's joint velocities; arm: robosuite's OSC response, joint_drive.py), the filter
 (filter.py), then the base command for the filtered base velocities and the arm drive's joint velocity command.
-Ground truth (evaluation only): every robot sphere against the oracle boxes of the non-exempt objects, and contacts.
+Ground truth (evaluation only): every robot sphere against the collision geometry of the non-exempt objects
+(truth.py), and contacts; the oracle boxes are kept next to it for comparison only.
 ``MissionRunner`` sequences the plan's segments. One process per episode (scripts/run_episode.py).
 """
 
@@ -321,7 +322,6 @@ class SafetyFilterEnv(gym.Wrapper):
         boxes = [self.oracle_graph.nodes[o].aabb() for o in self.eval_ids]  # oracle boxes are axis-aligned
         self.eval_lo, self.eval_hi = np.array([lo for lo, _ in boxes]).reshape(-1, 3), np.array([hi for _, hi in boxes]).reshape(-1, 3)
         row_oracle = {self.bridge.to_oracle(nid) for nid in self.row_ids} - {None}
-        self.eval_is_row = np.array([o in row_oracle for o in self.eval_ids], dtype=bool)  # oracle boxes of the row objects
         self.eval_set, self.row_oracle = set(self.eval_ids), row_oracle
         self.filter.set_objects(self.row_balls)
         ks = np.concatenate([b.kappa * np.minimum(self.graph.nodes[nid].std, b.s_max) for nid, b in self.row_balls.items()] or [np.zeros(0)])
@@ -364,23 +364,24 @@ class SafetyFilterEnv(gym.Wrapper):
                 "objects_below_zero": sorted({check.object_ids[k] for k in np.flatnonzero(bar.h.min(axis=0) < 0)}), "true_clearance": truth["clearance"], "true_pair": truth["pair"]}
 
     def _truth(self, centres: np.ndarray, radii: np.ndarray) -> dict:
-        """Smallest signed distance of every robot sphere to the oracle boxes of the non-exempt objects (exact)."""
-        if len(self.eval_lo) == 0:
-            return {"clearance": None, "pair": None, "clearance_rows": None, "geom_clearance": None, "geom_pair": None, "geom_clearance_rows": None}
-        c = centres[:, None, :]
-        out = np.maximum(np.maximum(self.eval_lo[None] - c, c - self.eval_hi[None]), 0.0)
-        dist = np.linalg.norm(out, axis=2)
-        depth = np.min(np.minimum(c - self.eval_lo[None], self.eval_hi[None] - c), axis=2)
-        sd = np.where(dist > 0, dist, -depth) - radii[:, None]
-        i, j = np.unravel_index(int(np.argmin(sd)), sd.shape)
-        rows = sd[:, self.eval_is_row]
+        """True clearance (spec 6.4): the smallest signed distance of every robot sphere to the collision geometry of
+        the non-exempt objects (truth.py), and over the rows' objects only (to check the barrier). Next to it, for
+        comparison only, the same against the oracle boxes (one axis-aligned box per object), the obstacle model before
+        spec v4. None: nothing within truth.HORIZON_M."""
         data = _raw_data(self.rs.sim)
-        geom, gpair = self.true_geometry.clearance(data, centres, radii, self.eval_set)
-        geom_rows, _ = self.true_geometry.clearance(data, centres, radii, self.row_oracle)
-        return {"clearance": float(sd[i, j]), "pair": [self.robot.links[i], f"O:{self.eval_ids[j]}"],
-                "clearance_rows": float(rows.min()) if rows.size else None,  # the same objects as the rows (to check the barrier)
-                # exact, to the collision geometry (truth.py; None: nothing within its horizon)
-                "geom_clearance": geom, "geom_pair": None if gpair is None else [self.robot.links[gpair[0]], f"O:{gpair[1]}"], "geom_clearance_rows": geom_rows}
+        clear, pair = self.true_geometry.clearance(data, centres, radii, self.eval_set)
+        clear_rows, _ = self.true_geometry.clearance(data, centres, radii, self.row_oracle)
+        out = {"clearance": clear, "pair": None if pair is None else [self.robot.links[pair[0]], f"O:{pair[1]}"], "clearance_rows": clear_rows,
+               "box_clearance": None, "box_pair": None}
+        if len(self.eval_lo):
+            c = centres[:, None, :]
+            outside = np.maximum(np.maximum(self.eval_lo[None] - c, c - self.eval_hi[None]), 0.0)
+            dist = np.linalg.norm(outside, axis=2)
+            depth = np.min(np.minimum(c - self.eval_lo[None], self.eval_hi[None] - c), axis=2)
+            sd = np.where(dist > 0, dist, -depth) - radii[:, None]
+            i, j = np.unravel_index(int(np.argmin(sd)), sd.shape)
+            out.update(box_clearance=float(sd[i, j]), box_pair=[self.robot.links[i], f"O:{self.eval_ids[j]}"])
+        return out
 
     # ------------------------------------------------------------------ gym API
 
@@ -418,7 +419,7 @@ class SafetyFilterEnv(gym.Wrapper):
         truth = self._truth(bar.centres, bar.radii)
         bp, R, _ = self.robot_pose()
         self.ground_truth.append({"tick": self.tick, "segment": self.segment_index, "clearance": truth["clearance"], "clearance_pair": truth["pair"], "clearance_rows": truth["clearance_rows"],
-                                  "geom_clearance": truth["geom_clearance"], "geom_pair": truth["geom_pair"], "geom_clearance_rows": truth["geom_clearance_rows"],
+                                  "box_clearance": truth["box_clearance"], "box_pair": truth["box_pair"],
                                   "touched": sorted(f"O:{oracle_id}" for oracle_id in self._touched_oracle_ids() - self.exempt_oracle_ids),
                                   "base_xy": bp[:2].round(4).tolist(), "yaw": float(np.arctan2(R[1, 0], R[0, 0]))})
         self.q_log.append(q)
@@ -529,8 +530,7 @@ class SafetyFilterEnv(gym.Wrapper):
         solve_ms = np.array([r["solve_ms"] for r in rec if r["qp_status"] != "none"] or [0.0])
         i_min = first_ok + int(np.argmin([g["clearance"] if g["clearance"] is not None else np.inf for g in gt[first_ok:]])) if gt[first_ok:] else None
         above = [r["tick"] for r, g in zip(rec, gt) if r["h_min"] is not None and g["clearance_rows"] is not None and r["h_min"] > g["clearance_rows"] + 1e-3]
-        above_geom = [r["tick"] for r, g in zip(rec, gt) if r["h_min"] is not None and g["geom_clearance_rows"] is not None and r["h_min"] > g["geom_clearance_rows"] + 1e-3]
-        geom = [g["geom_clearance"] for g in gt if g["geom_clearance"] is not None]
+        box = [g["box_clearance"] for g in gt if g["box_clearance"] is not None]
         return {
             "task_description": self.env.task_description, "pruning": self.pruning, "filter": self.filter_on, "tag": self.tag,
             "outcome": outcome, "success": success, "task_success_robocasa": bool(getattr(self, "task_success_robocasa", False)), "stalled": stalled,
@@ -543,8 +543,7 @@ class SafetyFilterEnv(gym.Wrapper):
             "h_min_filter": min((r["h_min"] for r in rec if r["h_min"] is not None), default=None),
             "ticks_h_negative": sum(1 for r in rec if r["h_min"] is not None and r["h_min"] < 0.0),
             "ticks_barrier_above_truth": len(above), "ticks_barrier_above_truth_list": above[:50],
-            "geom_clearance_min": min(geom, default=None), "ticks_geom_clearance_negative": sum(c < 0 for c in geom),
-            "ticks_barrier_above_geom_truth": len(above_geom), "ticks_barrier_above_geom_truth_list": above_geom[:50],
+            "box_clearance_min": min(box, default=None), "ticks_box_clearance_negative": sum(c < 0 for c in box),  # oracle boxes, for comparison only
             "start": self.start,
             "outcomes": dict(Counter(r["outcome"] for r in rec)),
             "feasibility": self.feasibility(), "disturbance": self.disturbance(),

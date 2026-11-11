@@ -78,7 +78,10 @@ def min_area_rect(xy):
     pts = np.unique(np.round(np.asarray(xy, dtype=np.float64), 9), axis=0)
     if len(pts) < 3:
         return 0.0
-    hull = np.asarray(MultiPoint([tuple(p) for p in pts]).convex_hull.exterior.coords)[:-1]
+    hull = MultiPoint([tuple(p) for p in pts]).convex_hull
+    if hull.geom_type != "Polygon":  # collinear points (a few-vertex node): no area
+        return 0.0
+    hull = np.asarray(hull.exterior.coords)[:-1]
     best = np.inf
     for i in range(len(hull)):
         e = hull[(i + 1) % len(hull)] - hull[i]
