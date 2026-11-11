@@ -6,10 +6,10 @@ Writes
   config/panda_omron.urdf          the kinematic tree of the MuJoCo model (bodies, joints, offsets), so cuRobo and MuJoCo agree
   config/panda_omron_spheres.yml   cuRobo robot config: arm and hand spheres from cuRobo's Franka set, carried from the Franka
                                    URDF's link frames into robosuite's body frames at the zero configuration (unchanged);
-                                   base box and column cylinders: BASE_SPHERES spheres in all (Kasra: under 100 spheres for
-                                   the whole robot, the base coarser than the arm), split over the three geoms in proportion
-                                   to their surface area and fitted to each geom by cuRobo's own sphere fit
-                                   (fit_spheres_to_mesh, MorphIt, with that sphere count, other settings default)
+                                   base box: two rings of spheres sticking out at most 2 cm past its side faces;
+                                   column cylinders: a stack on each axis, 1 cm wider than the column (Kasra, 2026-11-11:
+                                   few spheres and little bulge before completeness; MorphIt's fits bulged up to 8 cm, and
+                                   more MorphIt spheres left up to 82 % of the box faces uncovered)
   outputs/viz/robot_spheres.json   the checks: centre and Jacobian differences cuRobo vs MuJoCo over random configurations,
                                    coverage of the collision geometry by the spheres and how far the spheres stick out
   outputs/viz/robot_spheres.pdf    the robot in three poses with the spheres over its real geometry
@@ -31,7 +31,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import mujoco  # noqa: E402
 import numpy as np  # noqa: E402
-import trimesh  # noqa: E402
 import yaml  # noqa: E402
 from scipy.spatial import ConvexHull, cKDTree  # noqa: E402
 
@@ -47,7 +46,10 @@ CUROBO = Path(__file__).resolve().parents[1] / "third_party" / "curobo" / "curob
 FRANKA_TO_ROBOSUITE = {**{f"panda_link{k}": f"robot0_link{k}" for k in range(8)}, "panda_hand": "robot0_right_hand",
                        "panda_leftfinger": "gripper0_right_leftfinger", "panda_rightfinger": "gripper0_right_rightfinger"}
 OUT = Path("outputs/viz")
-BASE_SPHERES = 35  # 61 arm and hand spheres (cuRobo's Franka set) + 35 = 96 < 100
+BASE_BULGE_M = 0.02  # the base box's spheres stick out at most this far past its side faces
+BOX_SPHERE_RADIUS_M = 0.12
+BOX_RING_SPACING_M = 0.15
+COLUMN_BULGE_M = 0.01  # the column spheres stick out this far sideways
 
 
 def name(m, kind, i):
@@ -160,27 +162,34 @@ for flink, rlink in FRANKA_TO_ROBOSUITE.items():
                       for s in franka_cfg["collision_spheres"][flink] if s["radius"] > 0]
 
 
-def fitted_spheres(mesh, R, p, n):
-    """n spheres for one base or column collision geom, from cuRobo's own fit (MorphIt): the geom as a trimesh in its
-    local frame, the fitted spheres moved into the body frame. Returns the spheres and cuRobo's metrics."""
-    import torch
-    from curobo.sphere_fit import fit_spheres_to_mesh
+def box_cover(half, bulge=BASE_BULGE_M, radius=BOX_SPHERE_RADIUS_M, spacing=BOX_RING_SPACING_M):
+    """A sparse ring cover of a box (half extents a, b, c), in its own frame: rings of spheres of ``radius`` at heights
+    that keep them inside the box's top and bottom, centred on the rectangle inset by radius - bulge from the side faces,
+    so no sphere sticks out past a side face by more than ``bulge``; one sphere every <= ``spacing`` along the rectangle,
+    corners included. Kasra (2026-11-11): few spheres and little bulge before completeness, so the box's corners and
+    top face are left partly uncovered."""
+    a, b, c = half
+    inset = radius - bulge
+    ra, rb = a - inset, b - inset
+    zs = [0.0] if c <= radius else list(np.linspace(-(c - radius), c - radius, int(np.ceil((2 * (c - radius)) / spacing)) + 1))
+    corners = np.array([(ra, rb), (-ra, rb), (-ra, -rb), (ra, -rb), (ra, rb)])
+    ring = []
+    for p0, p1 in zip(corners[:-1], corners[1:]):
+        n = int(np.ceil(np.linalg.norm(p1 - p0) / spacing))
+        ring += [p0 + (p1 - p0) * k / n for k in range(n)]
+    return [(np.array([x, y, z]), radius) for z in zs for x, y in ring]
 
-    torch.manual_seed(0)  # MorphIt starts from random samples (torch and numpy): seeded, so the config is reproducible
-    np.random.seed(0)
-    fit = fit_spheres_to_mesh(mesh, num_spheres=n, compute_metrics=True)
-    centres, radii = fit.centers.cpu().numpy().astype(float), fit.radii.cpu().numpy().astype(float)
-    keep = radii > 0
-    out = [{"center": [round(float(v), 5) for v in R @ c + p], "radius": round(float(r), 5)} for c, r in zip(centres[keep], radii[keep])]
-    metrics = {k: (float(v) if v is not None else None) for k, v in vars(fit.metrics).items()} if fit.metrics is not None else {}
-    return out, metrics
+
+def cylinder_cover(radius, half_height, bulge=COLUMN_BULGE_M):
+    """A stack of spheres on a cylinder's axis, radius = cylinder radius + ``bulge``, spaced so the side is covered."""
+    r = radius + bulge
+    gap = 2.0 * np.sqrt(r**2 - radius**2)  # the axial length of side one sphere covers
+    n = int(np.ceil(2 * half_height / gap)) + 1
+    return [(np.array([0.0, 0.0, z]), r) for z in np.linspace(-half_height, half_height, n)]
 
 
-# cuRobo's MorphIt fit is not reproducible on the GPU (the sphere count varied between 316 and 326 over runs), so the
-# config is a committed data file: refit only with --refit; otherwise the checks run on the committed spheres
 REFIT = "--refit" in sys.argv or not SPHERES_YML.exists()
 base_geoms = {}
-base_parts = []  # (body, geom name, trimesh in the geom frame, R, p)
 for b in (bodies if REFIT else []):
     bname = name(m, mujoco.mjtObj.mjOBJ_BODY, b)
     if not bname.startswith("mobilebase0"):
@@ -192,20 +201,14 @@ for b in (bodies if REFIT else []):
         mujoco.mju_quat2Mat(R, m.geom_quat[g])
         R, p, s = R.reshape(3, 3), np.asarray(m.geom_pos[g], float), m.geom_size[g]
         if m.geom_type[g] == mujoco.mjtGeom.mjGEOM_BOX:
-            mesh = trimesh.creation.box(extents=2 * s[:3])
+            local, rule = box_cover(s[:3]), f"box rings: radius {BOX_SPHERE_RADIUS_M} m, bulge <= {BASE_BULGE_M} m, spacing <= {BOX_RING_SPACING_M} m"
         elif m.geom_type[g] == mujoco.mjtGeom.mjGEOM_CYLINDER:
-            mesh = trimesh.creation.cylinder(radius=s[0], height=2 * s[1], sections=48)
+            local, rule = cylinder_cover(s[0], s[1]), f"axis stack: radius + {COLUMN_BULGE_M} m"
         else:
             raise ValueError(f"no sphere rule for geom type {m.geom_type[g]} ({name(m, mujoco.mjtObj.mjOBJ_GEOM, g)})")
-        base_parts.append((bname, name(m, mujoco.mjtObj.mjOBJ_GEOM, g), mesh, R, p))
-if base_parts:
-    area = np.array([part[2].area for part in base_parts])
-    counts = np.floor(BASE_SPHERES * area / area.sum()).astype(int)
-    counts[np.argsort(-(BASE_SPHERES * area / area.sum() - counts))[: BASE_SPHERES - counts.sum()]] += 1  # largest remainders
-    for (bname, gname, mesh, R, p), n in zip(base_parts, counts):
-        new, metrics = fitted_spheres(mesh, R, p, int(n))
+        new = [{"center": [round(float(v), 5) for v in R @ c + p], "radius": round(float(r), 5)} for c, r in local]
         spheres.setdefault(bname, []).extend(new)
-        base_geoms[gname] = {"spheres": len(new), "surface_area_m2": round(float(mesh.area), 4), "curobo_fit_metrics": metrics}
+        base_geoms[name(m, mujoco.mjtObj.mjOBJ_GEOM, g)] = {"spheres": len(new), "rule": rule}
 
 cfg = {"robot_cfg": {"kinematics": {
     "format_version": 2.0, "base_link": name(m, mujoco.mjtObj.mjOBJ_BODY, root), "tool_frames": ["gripper0_right_eef"],
@@ -217,7 +220,7 @@ cfg = {"robot_cfg": {"kinematics": {
 if REFIT:
     SPHERES_YML.write_text(yaml.safe_dump(cfg, sort_keys=False))
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "robot_spheres_fit.json").write_text(json.dumps(base_geoms, indent=1))  # cuRobo's fit metrics of the base spheres
+    (OUT / "robot_spheres_fit.json").write_text(json.dumps(base_geoms, indent=1))  # how the base spheres were built
 else:
     spheres = yaml.safe_load(SPHERES_YML.read_text())["robot_cfg"]["kinematics"]["collision_spheres"]
 

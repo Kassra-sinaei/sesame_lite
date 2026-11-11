@@ -25,6 +25,7 @@ import time
 
 import mujoco
 import numpy as np
+from scipy.ndimage import binary_dilation
 import yaml
 
 from sesame_lite.scene_graph import LabelSpace, OracleLookup, SceneGraph, _raw_data, _raw_model, _subtree_body_ids
@@ -33,6 +34,9 @@ REPO = Path(__file__).resolve().parents[2]
 MAPS_DIR = REPO / "outputs" / "maps"
 HYDRA_INSTALL = REPO / "third_party" / "install"
 SINK_LIBRARY_DIR = REPO / "third_party" / "build" / "sesame_hydra"  # sesame_hydra.<abi>.so (src/sesame_hydra)
+
+
+ROBOT_MASK_DILATION_PX = 3  # pixels around the robot's silhouette that also get no depth
 
 
 @dataclass(frozen=True)
@@ -163,6 +167,10 @@ class MappingCamera:
         self.opt.geomgroup[1] = 1  # visual geoms
         self.seed = seed
         self.rng = np.random.default_rng(seed)
+        # the robot's own geoms: their pixels get no depth at all (see render)
+        robot_root = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, rs_env.robots[0].robot_model.root_body)
+        robot_bodies = _subtree_body_ids(self.model, robot_root)
+        self.robot_geom = np.array([int(self.model.geom_bodyid[g]) in robot_bodies for g in range(self.model.ngeom)], dtype=bool)
 
     def _update(self, position, yaw_deg: float, pitch_deg: float):
         # a free camera at `position` looking along (yaw, pitch): MuJoCo places it at lookat - distance * forward
@@ -202,7 +210,13 @@ class MappingCamera:
         labels = np.zeros(depth.shape, dtype=np.int32)
         labels[is_geom] = self.geom_label[seg[..., 0][is_geom]]
         far = self.model.vis.map.zfar * self.model.stat.extent
-        valid = is_geom & (depth > self.p.min_range_m) & (depth < self.p.max_range_m) & (depth < 0.999 * far)
+        # the robot is masked out by its own model: no depth on its pixels or within ROBOT_MASK_DILATION_PX of them.
+        # Hydra skips invalid-label pixels, but interpolates depth between neighbouring pixels, which carried the robot's
+        # depth into the fixture behind it (close_fridge, seed 100: 16 "counter" points inside the robot's base).
+        robot = np.zeros(depth.shape, dtype=bool)
+        robot[is_geom] = self.robot_geom[seg[..., 0][is_geom]]
+        robot = binary_dilation(robot, iterations=ROBOT_MASK_DILATION_PX)
+        valid = is_geom & ~robot & (depth > self.p.min_range_m) & (depth < self.p.max_range_m) & (depth < 0.999 * far)
         if noise:
             depth = depth + self.rng.normal(0.0, 1.0, depth.shape) * self.p.depth_noise_c * depth**2
         depth = np.where(valid, depth, np.nan).astype(np.float32)

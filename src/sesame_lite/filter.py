@@ -49,11 +49,13 @@ DAQP_EXIT = {1: "optimal", 2: "soft_optimal", -1: "infeasible", -2: "cycling", -
 
 @dataclass(frozen=True)
 class FilterPolicy:
-    """Filter constants. The first block is the PDF's (Numbers, Theorem 2); the rest describes the robot."""
+    """Filter constants. The first block is the PDF's (Numbers, Theorem 2), tuned; the rest describes the robot."""
 
-    alpha: float = 1.0  # class-K gain of eq. (7)-(9)
-    d_bar: float = 0.05  # bound on the tracking disturbance |d|, q_dot = u + d
-    tau_m: float = 0.002  # temperature of the log-sum-exp (eq. 5)
+    # tuned (spec step 4, Kasra 2026-11-11; PDF start values alpha 1, d_bar 0.05, tau 2 mm): the filter was too
+    # conservative; d_bar from the measured tracking disturbance (99 % below 0.035 in pick_place_far)
+    alpha: float = 2.0  # class-K gain of eq. (7)-(9)
+    d_bar: float = 0.03  # bound on the tracking disturbance |d|, q_dot = u + d
+    tau_m: float = 0.0005  # temperature of the log-sum-exp (eq. 5)
     delta: float = 0.01  # map risk, split over the admitted objects, then over 2 |P_j| (eq. 4)
     relaxation_penalty: float = 1e3  # price per unit slack of a relaxed row (infeasible QP, section 6.3)
     goal_standoff_m: float = 0.065  # base goal clearance from the balls (the value used before; planning only)
@@ -66,7 +68,7 @@ class FilterPolicy:
 
     @property
     def m_d(self) -> float:
-        """m_d = d_bar^2 / (4 eps alpha), added to every ball radius (Theorem 2): 2.5 cm."""
+        """m_d = d_bar^2 / (4 eps alpha), added to every ball radius (Theorem 2): 0.75 cm with the tuned values."""
         return self.d_bar**2 / (4.0 * self.eps * self.alpha)
 
 
