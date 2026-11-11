@@ -12,7 +12,8 @@ route (free points of the oracle graph's place grid: the operator's route, not m
 camera poses only.
 
 Labels stand in for a panoptic segmenter: one label per fixture or object instance (oracle node O(k) -> instance
-k + 1), the floor is a surface label, robot and unknown geoms are label 0 (invalid: Hydra skips those pixels).
+k + 1), the floor is a surface label, unknown geoms are label 0 (invalid: Hydra skips those pixels). The robot is left
+out of the mapping renders altogether (the kitchen is mapped as if before the robot parked there).
 """
 
 from __future__ import annotations
@@ -25,7 +26,6 @@ import time
 
 import mujoco
 import numpy as np
-from scipy.ndimage import binary_dilation
 import yaml
 
 from sesame_lite.scene_graph import LabelSpace, OracleLookup, SceneGraph, _raw_data, _raw_model, _subtree_body_ids
@@ -36,7 +36,7 @@ HYDRA_INSTALL = REPO / "third_party" / "install"
 SINK_LIBRARY_DIR = REPO / "third_party" / "build" / "sesame_hydra"  # sesame_hydra.<abi>.so (src/sesame_hydra)
 
 
-ROBOT_MASK_DILATION_PX = 3  # pixels around the robot's silhouette that also get no depth
+HIDDEN_GEOM_GROUP = 5  # a geom group the mapping camera does not render (MuJoCo has groups 0-5)
 
 
 @dataclass(frozen=True)
@@ -167,7 +167,7 @@ class MappingCamera:
         self.opt.geomgroup[1] = 1  # visual geoms
         self.seed = seed
         self.rng = np.random.default_rng(seed)
-        # the robot's own geoms: their pixels get no depth at all (see render)
+        # the robot's own geoms, left out of the mapping renders (see _update)
         robot_root = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, rs_env.robots[0].robot_model.root_body)
         robot_bodies = _subtree_body_ids(self.model, robot_root)
         self.robot_geom = np.array([int(self.model.geom_bodyid[g]) in robot_bodies for g in range(self.model.ngeom)], dtype=bool)
@@ -178,7 +178,14 @@ class MappingCamera:
         forward = np.array([math.cos(pitch) * math.cos(yaw), math.cos(pitch) * math.sin(yaw), math.sin(pitch)])
         self.cam.distance, self.cam.azimuth, self.cam.elevation = 1.0, yaw_deg, pitch_deg
         self.cam.lookat[:] = np.asarray(position, dtype=float) + forward
-        self.renderer.update_scene(self.data, camera=self.cam, scene_option=self.opt)
+        # the kitchen is mapped without the robot in it (as if mapped before the robot parked there): while the render
+        # scene is built, the robot's geoms sit in a geom group the camera does not show, so they are not in the scene
+        group = self.model.geom_group[self.robot_geom].copy()
+        self.model.geom_group[self.robot_geom] = HIDDEN_GEOM_GROUP
+        try:
+            self.renderer.update_scene(self.data, camera=self.cam, scene_option=self.opt)
+        finally:
+            self.model.geom_group[self.robot_geom] = group
 
     def pose(self) -> tuple[np.ndarray, np.ndarray]:
         """World position and world_R_optical of the camera of the last update (from the scene's GL camera)."""
@@ -210,13 +217,9 @@ class MappingCamera:
         labels = np.zeros(depth.shape, dtype=np.int32)
         labels[is_geom] = self.geom_label[seg[..., 0][is_geom]]
         far = self.model.vis.map.zfar * self.model.stat.extent
-        # the robot is masked out by its own model: no depth on its pixels or within ROBOT_MASK_DILATION_PX of them.
-        # Hydra skips invalid-label pixels, but interpolates depth between neighbouring pixels, which carried the robot's
-        # depth into the fixture behind it (close_fridge, seed 100: 16 "counter" points inside the robot's base).
-        robot = np.zeros(depth.shape, dtype=bool)
-        robot[is_geom] = self.robot_geom[seg[..., 0][is_geom]]
-        robot = binary_dilation(robot, iterations=ROBOT_MASK_DILATION_PX)
-        valid = is_geom & ~robot & (depth > self.p.min_range_m) & (depth < self.p.max_range_m) & (depth < 0.999 * far)
+        if np.any(self.robot_geom[seg[..., 0][is_geom]]):
+            raise RuntimeError("the robot is visible to the mapping camera")
+        valid = is_geom & (depth > self.p.min_range_m) & (depth < self.p.max_range_m) & (depth < 0.999 * far)
         if noise:
             depth = depth + self.rng.normal(0.0, 1.0, depth.shape) * self.p.depth_noise_c * depth**2
         depth = np.where(valid, depth, np.nan).astype(np.float32)
@@ -255,6 +258,8 @@ def check_camera(cam: MappingCamera, poses: list, oracle_graph: SceneGraph, tabl
             ray = np.array([(u[k] - cam.p.cx) / cam.p.fx, (v[k] - cam.p.cy) / cam.p.fy, 1.0])
             direction = R @ ray
             dist = mujoco.mj_ray(cam.model, cam.data, pos, direction / np.linalg.norm(direction), group, 1, -1, hit)
+            if hit[0] >= 0 and cam.robot_geom[hit[0]]:
+                continue  # the ray hits the robot, which the mapping renders leave out
             diff.append(abs(float(depth[v[k], u[k]]) - dist / np.linalg.norm(ray)))
         diff = np.array(diff)
         out.append({"pose": [float(x) for x in poses[i][0]] + [poses[i][1], poses[i][2]], "rays": int(len(diff)), "median_m": float(np.median(diff)), "p90_m": float(np.percentile(diff, 90))})
