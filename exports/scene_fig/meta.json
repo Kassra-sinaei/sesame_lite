@@ -1,0 +1,47 @@
+{
+ "kitchen": {
+  "layout_id": 47,
+  "style_id": 1
+ },
+ "task": "PickPlaceSinkToCounterFar",
+ "mission": "pick_place_far",
+ "seed": 100,
+ "instruction": "Pick the tomato from the sink and place it on the plate located on the counter.",
+ "step": 496,
+ "segment": 1,
+ "segment_kind": "VLA",
+ "ticks": 709,
+ "outcome": "success",
+ "rule_for_the_step": "in the last segment, the tick with the smallest barrier value h",
+ "h_min_at_step": 0.0039279877861331525,
+ "closest_pair_at_step": [
+  20,
+  "robot0_link5",
+  "O(82)"
+ ],
+ "N_spheres": 100,
+ "N_admitted_objects": 12,
+ "N_objects": 64,
+ "delta": 0.01,
+ "delta_j": 0.0008333333333333334,
+ "kappa_admitted": {
+  "min": 3.810138630616644,
+  "median": 4.740942680742819,
+  "max": 5.058396226876377
+ },
+ "sigma_max_admitted_m": {
+  "min": 0.009884555994130512,
+  "median": 0.010546450496629896,
+  "max": 0.013122882286560243
+ },
+ "sigma_max_rule": "s_max = voxel_size / kappa_j (PDF, Numbers)",
+ "m_r_m": 0.049572505007417715,
+ "e_max_m": 0.08586209733131006,
+ "m_d_m": 0.0075,
+ "voxel_size_m": 0.05000000074505806,
+ "alpha": 2.0,
+ "d_bar": 0.03,
+ "eps": 0.015,
+ "tau_m": 0.0005,
+ "units": "metres, world frame"
+}
