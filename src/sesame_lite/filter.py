@@ -60,16 +60,18 @@ class FilterPolicy:
     relaxation_penalty: float = 1e3  # price per unit slack of a relaxed row (infeasible QP, section 6.3)
     goal_standoff_m: float = 0.065  # base goal clearance from the balls (the value used before; planning only)
     arm_velocity_limits: tuple[float, ...] = (2.175, 2.175, 2.175, 2.175, 2.61, 2.61, 2.61)  # rad/s, Franka datasheet
+    issf: bool = True  # False: the filter without the ISSf term (eps = 0, m_d = 0; EVAL_SPEC.md, "Proposed without ISSf")
 
     @property
     def eps(self) -> float:
-        """eps = d_bar / 2 makes the rest offset smallest (PDF, Theorem 2)."""
-        return self.d_bar / 2.0
+        """eps = d_bar / 2 makes the rest offset smallest (PDF, Theorem 2); 0 without ISSf."""
+        return self.d_bar / 2.0 if self.issf else 0.0
 
     @property
     def m_d(self) -> float:
-        """m_d = d_bar^2 / (4 eps alpha), added to every ball radius (Theorem 2): 0.75 cm with the tuned values."""
-        return self.d_bar**2 / (4.0 * self.eps * self.alpha)
+        """m_d = d_bar^2 / (4 eps alpha), added to every ball radius (Theorem 2): 0.75 cm with the tuned values; 0
+        without ISSf."""
+        return self.d_bar**2 / (4.0 * self.eps * self.alpha) if self.issf else 0.0
 
 
 # ---------------------------------------------------------------------- the base: command <-> joint velocities
@@ -186,8 +188,11 @@ class FilterReceipt:
 class SphereFilter:
     """Rows of eq. (8) for every robot sphere against every admitted object, and the QP of eq. (9)."""
 
-    def __init__(self, robot, policy: FilterPolicy = FilterPolicy(), device: str = "cuda"):
+    def __init__(self, robot, policy: FilterPolicy = FilterPolicy(), device: str = "cuda", row_spheres: np.ndarray | None = None):
+        """``row_spheres``: a mask of the robot spheres that get rows (None: all). The barrier is still computed for
+        every sphere (receipts, videos)."""
         self.robot, self.policy, self.device = robot, policy, device
+        self.row_spheres = row_spheres
         self.arm_limit = np.asarray(policy.arm_velocity_limits, float)
         self.set_objects({})
 
@@ -241,6 +246,9 @@ class SphereFilter:
         gk = bar.grad[..., KNOWN].reshape(S * O, -1)
         b = p.alpha * bar.h.reshape(-1) + gk @ np.asarray(known_qdot, float) - p.eps * np.einsum("ij,ij->i", gc, gc)
         pairs = np.stack(np.unravel_index(np.arange(S * O), (S, O)), axis=1)
+        if self.row_spheres is not None:
+            keep = self.row_spheres[pairs[:, 0]]
+            return -gc[keep], b[keep], pairs[keep]
         return -gc, b, pairs
 
     def box(self, q: np.ndarray, base_bounds: tuple[np.ndarray, np.ndarray], q_lo: np.ndarray, q_hi: np.ndarray, dt: float) -> tuple[np.ndarray, np.ndarray]:
@@ -262,6 +270,7 @@ class SphereFilter:
         n = len(u_nom)
         bar = self.barrier(q)
         G, b, pairs = self.rows(bar, known_qdot)
+        n_pairs = int(len(b))
         can_bind = np.maximum(G * self.lb, G * self.ub).sum(axis=1) > b  # the others hold for every u in U
         G, b, pairs = G[can_bind], b[can_bind], pairs[can_bind]
         status, solve_ms, slack_rows, max_slack = "none", 0.0, [], 0.0
@@ -301,7 +310,7 @@ class SphereFilter:
             h_min, pair, exact_min = float(bar.h[i, j]), [int(i), self.robot.links[i], self.object_ids[j]], float(bar.exact.min())
         else:
             h_min, pair, exact_min = None, None, None
-        rec = FilterReceipt(tick=tick, outcome=outcome, qp_status=status, n_pairs=int(bar.h.size), n_rows_qp=int(G.shape[0]), h_min=h_min, h_min_pair=pair,
+        rec = FilterReceipt(tick=tick, outcome=outcome, qp_status=status, n_pairs=n_pairs, n_rows_qp=int(G.shape[0]), h_min=h_min, h_min_pair=pair,
                             exact_min=exact_min, solve_ms=solve_ms, tick_ms=(time.perf_counter() - t0) * 1e3, u_nominal=[float(v) for v in u_nom],
                             u_applied=[float(v) for v in u], correction_norm=float(np.linalg.norm(u - u_nom)), known_velocity=[float(v) for v in known_qdot],
                             slack_rows=slack_rows, max_slack=max_slack)

@@ -154,12 +154,19 @@ class MappingCamera:
     optical frame (x right, y down, z forward).
     """
 
-    def __init__(self, rs_env, params: MappingParams, geom_label: np.ndarray, seed: int):
+    def __init__(self, rs_env, params: MappingParams, geom_label: np.ndarray, seed: int, hide_bodies=()):
         self.p, self.geom_label = params, geom_label
         self.model, self.data = _raw_model(rs_env.sim), _raw_data(rs_env.sim)
         self.model.vis.global_.offwidth = max(int(self.model.vis.global_.offwidth), params.width)
         self.model.vis.global_.offheight = max(int(self.model.vis.global_.offheight), params.height)
-        self.renderer = mujoco.Renderer(self.model, params.height, params.width, max_geom=40000)
+        # no multisampling: MSAA blends the id colours of neighbouring geoms (wrong or non-existent labels at edges)
+        # and mixes depths across edges; the context takes the sample count at creation, so set it only for this one
+        samples = int(self.model.vis.quality.offsamples)
+        self.model.vis.quality.offsamples = 0
+        try:
+            self.renderer = mujoco.Renderer(self.model, params.height, params.width, max_geom=40000)
+        finally:
+            self.model.vis.quality.offsamples = samples
         self.cam = mujoco.MjvCamera()
         self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
         self.opt = mujoco.MjvOption()
@@ -167,10 +174,10 @@ class MappingCamera:
         self.opt.geomgroup[1] = 1  # visual geoms
         self.seed = seed
         self.rng = np.random.default_rng(seed)
-        # the robot's own geoms, left out of the mapping renders (see _update)
+        # the robot's own geoms (and the bodies in ``hide_bodies``), left out of the mapping renders (see _update)
         robot_root = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, rs_env.robots[0].robot_model.root_body)
-        robot_bodies = _subtree_body_ids(self.model, robot_root)
-        self.robot_geom = np.array([int(self.model.geom_bodyid[g]) in robot_bodies for g in range(self.model.ngeom)], dtype=bool)
+        hidden = _subtree_body_ids(self.model, robot_root) | set(hide_bodies)
+        self.hidden_geom = np.array([int(self.model.geom_bodyid[g]) in hidden for g in range(self.model.ngeom)], dtype=bool)
 
     def _update(self, position, yaw_deg: float, pitch_deg: float):
         # a free camera at `position` looking along (yaw, pitch): MuJoCo places it at lookat - distance * forward
@@ -180,12 +187,12 @@ class MappingCamera:
         self.cam.lookat[:] = np.asarray(position, dtype=float) + forward
         # the kitchen is mapped without the robot in it (as if mapped before the robot parked there): while the render
         # scene is built, the robot's geoms sit in a geom group the camera does not show, so they are not in the scene
-        group = self.model.geom_group[self.robot_geom].copy()
-        self.model.geom_group[self.robot_geom] = HIDDEN_GEOM_GROUP
+        group = self.model.geom_group[self.hidden_geom].copy()
+        self.model.geom_group[self.hidden_geom] = HIDDEN_GEOM_GROUP
         try:
             self.renderer.update_scene(self.data, camera=self.cam, scene_option=self.opt)
         finally:
-            self.model.geom_group[self.robot_geom] = group
+            self.model.geom_group[self.hidden_geom] = group
 
     def pose(self) -> tuple[np.ndarray, np.ndarray]:
         """World position and world_R_optical of the camera of the last update (from the scene's GL camera)."""
@@ -217,8 +224,8 @@ class MappingCamera:
         labels = np.zeros(depth.shape, dtype=np.int32)
         labels[is_geom] = self.geom_label[seg[..., 0][is_geom]]
         far = self.model.vis.map.zfar * self.model.stat.extent
-        if np.any(self.robot_geom[seg[..., 0][is_geom]]):
-            raise RuntimeError("the robot is visible to the mapping camera")
+        if np.any(self.hidden_geom[seg[..., 0][is_geom]]):
+            raise RuntimeError("a hidden body (the robot) is visible to the mapping camera")
         valid = is_geom & (depth > self.p.min_range_m) & (depth < self.p.max_range_m) & (depth < 0.999 * far)
         if noise:
             depth = depth + self.rng.normal(0.0, 1.0, depth.shape) * self.p.depth_noise_c * depth**2
@@ -258,7 +265,7 @@ def check_camera(cam: MappingCamera, poses: list, oracle_graph: SceneGraph, tabl
             ray = np.array([(u[k] - cam.p.cx) / cam.p.fx, (v[k] - cam.p.cy) / cam.p.fy, 1.0])
             direction = R @ ray
             dist = mujoco.mj_ray(cam.model, cam.data, pos, direction / np.linalg.norm(direction), group, 1, -1, hit)
-            if hit[0] >= 0 and cam.robot_geom[hit[0]]:
+            if hit[0] >= 0 and cam.hidden_geom[hit[0]]:
                 continue  # the ray hits the robot, which the mapping renders leave out
             diff.append(abs(float(depth[v[k], u[k]]) - dist / np.linalg.norm(ray)))
         diff = np.array(diff)
@@ -278,11 +285,9 @@ def quat_wxyz(R: np.ndarray) -> np.ndarray:
 # --------------------------------------------------------------------------- route
 
 
-def mapping_route(oracle_graph: SceneGraph, rs_env, params: MappingParams) -> tuple[list[tuple[np.ndarray, float, float]], list]:
-    """Camera poses: every place of the oracle grid with clearance >= route_min_clearance_m that lies over the kitchen's
-    floor, at camera height, yaw every yaw_step_deg, each pitch. Places where the camera would sit inside the robot are
-    skipped (listed). The oracle grid spans the bounding box of all boxes, so in an L-shaped kitchen some of its places
-    lie outside the room; the floor test drops them."""
+def floor_test(rs_env):
+    """A test whether an x-y point lies over the kitchen's floor (the floor fixtures' geoms; the oracle place grid
+    spans the bounding box of all boxes, so in an L-shaped kitchen some of its places lie outside the room)."""
     model, data = _raw_model(rs_env.sim), _raw_data(rs_env.sim)
     floor = []  # x-y rectangles of the floor fixtures' geoms
     for fx in rs_env.fixtures.values():
@@ -291,21 +296,17 @@ def mapping_route(oracle_graph: SceneGraph, rs_env, params: MappingParams) -> tu
                 for g in np.flatnonzero(model.geom_bodyid == b):
                     corners = (np.array([(sx, sy, sz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]) * model.geom_aabb[g][3:] + model.geom_aabb[g][:3]) @ data.geom_xmat[g].reshape(3, 3).T + data.geom_xpos[g]
                     floor.append((corners[:, :2].min(axis=0), corners[:, :2].max(axis=0)))
+    return lambda xy: any(np.all(xy >= lo) and np.all(xy <= hi) for lo, hi in floor)
 
-    def over_floor(xy):
-        return any(np.all(xy >= lo) and np.all(xy <= hi) for lo, hi in floor)
 
-    robot_root = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, rs_env.robots[0].robot_model.root_body)
-    robot_bodies = _subtree_body_ids(model, robot_root)
-    gids = [g for g in range(model.ngeom) if int(model.geom_bodyid[g]) in robot_bodies and int(model.geom_group[g]) == 1]
-    robot_xy = np.array([data.geom_xpos[g][:2] for g in gids])
-    robot_r = float(np.max(np.linalg.norm(robot_xy - robot_xy.mean(axis=0), axis=1))) + 0.3
-    poses, skipped = [], []
+def mapping_route(oracle_graph: SceneGraph, rs_env, params: MappingParams) -> tuple[list[tuple[np.ndarray, float, float]], list]:
+    """Camera poses: every place of the oracle grid with clearance >= route_min_clearance_m that lies over the kitchen's
+    floor, at camera height, yaw every yaw_step_deg, each pitch. The oracle grid spans the bounding box of all boxes, so in an L-shaped kitchen some of its places
+    lie outside the room; the floor test drops them."""
+    over_floor = floor_test(rs_env)
+    poses, skipped = [], []  # (no place is skipped any more: the robot is left out of the mapping renders)
     for pid, (p, clearance) in sorted(oracle_graph.places.items(), key=lambda kv: (kv[1][0][0], kv[1][0][1])):
         if clearance < params.route_min_clearance_m or not over_floor(p[:2]):
-            continue
-        if np.linalg.norm(p[:2] - robot_xy.mean(axis=0)) < robot_r:
-            skipped.append(pid)
             continue
         for k in range(int(round(360 / params.yaw_step_deg))):
             for pitch in params.pitches_deg:
@@ -492,18 +493,32 @@ def map_dir(mission: str, seed: int, n: int, labels: str = "instance") -> Path:
     return MAPS_DIR / (f"{mission}_s{seed}_{n}" + ("" if labels == "instance" else f"_{labels}"))
 
 
-def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: Path, *, seed: int, params: MappingParams = MappingParams()) -> Path:
-    """Mapping pass over the current kitchen state; writes the cache directory (see the module docstring)."""
+def look_around_route(xy, params: MappingParams) -> list[tuple[np.ndarray, float, float]]:
+    """The look-around map (EVAL_SPEC.md, section 5): the camera stays at one floor position, at camera height, and
+    turns once in place with the full pass's yaw steps and pitches; no tour, no added views."""
+    pos = np.array([float(xy[0]), float(xy[1]), params.camera_height_m])
+    return [(pos.copy(), k * params.yaw_step_deg, pitch) for k in range(int(round(360 / params.yaw_step_deg))) for pitch in params.pitches_deg]
+
+
+def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: Path, *, seed: int, params: MappingParams = MappingParams(), look_from=None,
+              hide_bodies=()) -> Path:
+    """Mapping pass over the current kitchen state; writes the cache directory (see the module docstring).
+    ``seed`` seeds the depth noise. ``look_from`` (x, y): the look-around map from that floor position instead of the
+    full pass. ``hide_bodies``: MuJoCo bodies left out of the renders like the robot (the evaluation's map without
+    the clutter)."""
     from sesame_lite.uncertainty import write_points
 
     out_dir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     table = instance_table(rs_env, oracle_graph, lookup, oracle_graph.labels, params.labels)
-    poses, skipped = mapping_route(oracle_graph, rs_env, params)
-    extra, coverage = targeted_views(oracle_graph, poses, params)
-    into, receptacles = receptacle_views(oracle_graph, params)
-    poses = poses + extra + into
-    cam = MappingCamera(rs_env, params, table["geom_label"], seed)
+    if look_from is None:
+        poses, skipped = mapping_route(oracle_graph, rs_env, params)
+        extra, coverage = targeted_views(oracle_graph, poses, params)
+        into, receptacles = receptacle_views(oracle_graph, params)
+        poses = poses + extra + into
+    else:
+        poses, skipped, extra, coverage, receptacles = look_around_route(look_from, params), [], [], {}, {}
+    cam = MappingCamera(rs_env, params, table["geom_label"], seed, hide_bodies)
     views = []  # what each frame saw (pose, depth, labels): the map side's record for the observation-angle rule
 
     def frames():
@@ -525,8 +540,9 @@ def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: P
         "oracle_of_label": {str(k): v for k, v in table["oracle_of_label"].items()},  # evaluation side only
         "labelspace": table["labelspace"],
         "params": params.as_dict(),
-        "route": {"camera_poses": len(poses), "targeted_poses": len(extra), "places_skipped_inside_robot": skipped, "large_vertical_surfaces": coverage,
-                  "receptacle_views": receptacles},
+        "route": {"kind": "full" if look_from is None else "look_around", "look_from": None if look_from is None else [float(look_from[0]), float(look_from[1])],
+                  "camera_poses": len(poses), "targeted_poses": len(extra), "places_skipped_inside_robot": skipped, "large_vertical_surfaces": coverage,
+                  "receptacle_views": receptacles, "hidden_bodies": len(hide_bodies)},
         "camera_check": camera_check,
         "hydra": stats,
         "seconds": round(t_map, 1),

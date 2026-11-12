@@ -1,0 +1,601 @@
+{
+ "rule": "a kitchen (layout, style) listed here is never a test scene; target-split kitchens (1,1)..(10,10) are all listed",
+ "kitchens": [
+  {
+   "layout": 1,
+   "style": 1,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 1,
+   "style": 52,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 2,
+   "style": 2,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 3,
+   "style": 3,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 3,
+   "style": 17,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 4,
+   "style": 4,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 5,
+   "style": 5,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 6,
+   "style": 6,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 6,
+   "style": 57,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 7,
+   "style": 7,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 7,
+   "style": 59,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 8,
+   "style": 3,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 8,
+   "style": 8,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)",
+    "sesame_lite: seed-100 demos and tuning (nav_clutter, pick_place_far, close_fridge, close_cabinet)"
+   ]
+  },
+  {
+   "layout": 9,
+   "style": 9,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 9,
+   "style": 59,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 10,
+   "style": 10,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 12,
+   "style": 12,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 12,
+   "style": 32,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (OpenCabinet, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (PickPlaceCounterToCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 12,
+   "style": 36,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (OpenCabinet, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (PickPlaceCounterToCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 14,
+   "style": 20,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 15,
+   "style": 40,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 15,
+   "style": 41,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 15,
+   "style": 50,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 16,
+   "style": 49,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (PickPlaceCounterToCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 16,
+   "style": 56,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (OpenCabinet, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (PickPlaceCounterToCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 17,
+   "style": 44,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 20,
+   "style": 55,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 20,
+   "style": 56,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 22,
+   "style": 13,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (PickPlaceCounterToCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 22,
+   "style": 42,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 22,
+   "style": 46,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 22,
+   "style": 47,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 24,
+   "style": 47,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 25,
+   "style": 2,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 26,
+   "style": 27,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (PickPlaceCounterToCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 27,
+   "style": 11,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (OpenCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 27,
+   "style": 36,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 27,
+   "style": 43,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 28,
+   "style": 20,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 28,
+   "style": 40,
+   "used_by": [
+    "sesame_lite: seed-100 demos and tuning (nav_clutter, pick_place_far, close_fridge, close_cabinet)"
+   ]
+  },
+  {
+   "layout": 29,
+   "style": 30,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 29,
+   "style": 50,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 30,
+   "style": 60,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 33,
+   "style": 19,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 33,
+   "style": 20,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 33,
+   "style": 40,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 39,
+   "style": 4,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 39,
+   "style": 11,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 39,
+   "style": 12,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 39,
+   "style": 39,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 40,
+   "style": 45,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (OpenCabinet, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (PickPlaceCounterToCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 40,
+   "style": 53,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 40,
+   "style": 54,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 42,
+   "style": 30,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 42,
+   "style": 36,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (OpenCabinet, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (PickPlaceCounterToCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 43,
+   "style": 39,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 45,
+   "style": 26,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 45,
+   "style": 52,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 45,
+   "style": 58,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 46,
+   "style": 14,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 47,
+   "style": 1,
+   "used_by": [
+    "sesame_lite: seed-100 demos and tuning (nav_clutter, pick_place_far, close_fridge, close_cabinet)"
+   ]
+  },
+  {
+   "layout": 47,
+   "style": 29,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 47,
+   "style": 45,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (OpenCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 48,
+   "style": 10,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 48,
+   "style": 11,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 48,
+   "style": 32,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (OpenCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 49,
+   "style": 2,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 50,
+   "style": 39,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 51,
+   "style": 13,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 51,
+   "style": 14,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 51,
+   "style": 36,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (PickPlaceCounterToCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 52,
+   "style": 28,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 52,
+   "style": 57,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 53,
+   "style": 24,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (OpenCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 54,
+   "style": 44,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 55,
+   "style": 33,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 55,
+   "style": 35,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 57,
+   "style": 59,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (OpenCabinet, REKI protocol seeds)",
+    "sesame_lite: earlier pretrain runs (PickPlaceCounterToCabinet, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 58,
+   "style": 54,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 59,
+   "style": 34,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 59,
+   "style": 35,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 59,
+   "style": 59,
+   "used_by": [
+    "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 60,
+   "style": 42,
+   "used_by": [
+    "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  }
+ ]
+}

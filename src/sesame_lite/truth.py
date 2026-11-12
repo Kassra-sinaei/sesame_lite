@@ -4,7 +4,9 @@ Spec v4, section 6.4 keeps the oracle boxes (one axis-aligned box per object) as
 object's collision geoms and can lie well outside them, so next to it this module reports the signed distance of every
 robot sphere to every collision geom of the objects, as MuJoCo collides them: boxes and cylinders exactly, meshes as
 their convex hull (inside: the depth to the nearest hull plane; outside: the distance to the nearest hull triangle).
-Geoms more than ``HORIZON_M`` from every sphere are skipped (the result is then above the horizon).
+Geoms more than ``HORIZON_M`` from every sphere are skipped (the result is then above the horizon). Geoms are
+visited in the order of a lower bound on their distance (bounding sphere), and the search stops once that bound
+exceeds the best distance found, which leaves the result unchanged.
 """
 
 from __future__ import annotations
@@ -67,12 +69,12 @@ class CollisionGeometry:
         """Smallest signed distance between a robot sphere and a geom (of ``owners`` only, if given), and the pair
         (sphere index, oracle id); None if every geom is beyond the horizon."""
         pos, mat = data.geom_xpos[self.gid], data.geom_xmat[self.gid].reshape(-1, 3, 3)
-        lb = np.linalg.norm(centres[:, None, :] - pos[None], axis=2) - self.rbound[None] - radii[:, None]
-        near = np.flatnonzero(lb.min(axis=0) < HORIZON_M)
+        lb = (np.linalg.norm(centres[:, None, :] - pos[None], axis=2) - self.rbound[None] - radii[:, None]).min(axis=0)  # per geom
+        near = [k for k in np.flatnonzero(lb < HORIZON_M) if owners is None or self.owner[k] in owners]
         best, pair = None, None
-        for k in near:
-            if owners is not None and self.owner[k] not in owners:
-                continue
+        for k in sorted(near, key=lambda k: lb[k]):  # nearest bound first; stop when no geom left can be closer
+            if best is not None and lb[k] >= best:
+                break
             x = (centres - pos[k]) @ mat[k]  # sphere centres in the geom frame
             t, s = self.type[k], self.size[k]
             if t == mujoco.mjtGeom.mjGEOM_BOX:

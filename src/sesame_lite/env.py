@@ -19,7 +19,7 @@ Ground truth (evaluation only): every robot sphere against the collision geometr
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import json
 import os
 from pathlib import Path
@@ -75,7 +75,7 @@ CLASSIFIERS = {
 STALL_HOLD_TICKS = 50
 STALL_PROGRESS_TICKS = 100
 STALL_SPEED_MPS = 0.02
-MAX_REPLANS = 3
+HAND_LINKS = ("robot0_right_hand", "gripper0_right_leftfinger", "gripper0_right_rightfinger")  # the end-effector filter's spheres
 
 
 def _json_default(o):
@@ -175,11 +175,18 @@ class SafetyFilterEnv(gym.Wrapper):
     segment's admitted objects (``row_balls``).
     """
 
-    def __init__(self, env: SesameRoboCasaEnv, *, pruning: bool = True, filter: bool = True, classifier: str = "prior", policy: FilterPolicy = FilterPolicy()):
+    def __init__(self, env: SesameRoboCasaEnv, *, pruning: bool = True, filter: bool = True, classifier: str = "prior", policy: FilterPolicy = FilterPolicy(),
+                 rows_for: str = "all", rho_fixed: float | None = None, max_replans: int = 3):
+        """``rows_for``: "all" robot spheres, or "hand" (the hand and finger spheres only: the end-effector filter of
+        EVAL_SPEC.md). ``rho_fixed``: every ball gets this radius (the fixed-margin filter). ``max_replans``: replans of
+        a navigation path that leaves its corridor (0 in the evaluation: the shared plan is never replanned)."""
         super().__init__(env)
         if not pruning:
             raise NotImplementedError("TODO (spec v4, section 11): runs with --no-pruning are out of scope for this version")
+        if rows_for not in ("all", "hand"):
+            raise ValueError(rows_for)
         self.pruning, self.filter_on, self.classifier_kind, self.policy = pruning, filter, classifier, policy
+        self.rows_for, self.rho_fixed, self.max_replans = rows_for, rho_fixed, max_replans
         self.tag = run_tag(pruning, filter)
         self._classifier = CLASSIFIERS[classifier]() if (pruning and filter) else None  # the classifier only runs when it can change something
 
@@ -222,20 +229,13 @@ class SafetyFilterEnv(gym.Wrapper):
 
     def reset(self, seed=None, *, plan: dict | None = None, **kwargs):
         obs, info = self.env.reset(seed=seed)
-        rs, model = self.rs, _raw_model(self.rs.sim)
+        rs = self.rs
         self.seed, self.mission = int(seed or 0), (plan or {}).get("mission", self.env.task)
         self.n_capture = 0
         self._capture()
-        bp, R, _ = self.robot_pose()
-        pg, Rg, size = self._base_box()
-        signs = np.array([(-1, -1), (1, -1), (1, 1), (-1, 1)], dtype=float)
-        local = ((pg[None, :2] + (signs * size[:2]) @ Rg[:2, :2].T) - bp[None, :2]) @ R[:2, :2]
-        lo, hi = local.min(axis=0), local.max(axis=0)
-        self.rect = np.array([[lo[0], lo[1]], [hi[0], lo[1]], [hi[0], hi[1]], [lo[0], hi[1]]])  # base footprint (planning)
-        self.z_band = (float(pg[2] - size[2]), float(pg[2] + size[2]))
-        self.base_radius = float(np.max(np.linalg.norm(self.rect, axis=1)))
+        bp = self._base_geometry()
         self.plan = plan or default_plan(rs)
-        self.plan_kwargs = dict(base_xy=bp[:2], rect_xy=self.rect, z_band=self.z_band, clearance_m=self.policy.goal_standoff_m, inflation_m=float(hi[1] - lo[1]) / 2 + 0.10)
+        self.plan_kwargs = dict(base_xy=bp[:2], rect_xy=self.rect, z_band=self.z_band, clearance_m=self.policy.goal_standoff_m, inflation_m=self.inflation_m)
         self.segments = self._resolve()
         if self.plan.get("injections") and self.segments[0].kind == NAVIGATION:
             # floor objects are dropped next to the planned path, then the map is built again (the path planner
@@ -248,6 +248,24 @@ class SafetyFilterEnv(gym.Wrapper):
             self.segments = self._resolve()
             for old, new in zip(first, self.segments):  # but keep the path the objects were placed along
                 new.path_polyline_xy, new.goal_yaw, new.goal_offset_m, new.center_xy = old.path_polyline_xy, old.goal_yaw, old.goal_offset_m, old.center_xy
+        return self._finish_reset(obs, info)
+
+    def _base_geometry(self) -> np.ndarray:
+        """The base footprint rectangle (base frame), its height band and the planning inflation; returns the base position."""
+        bp, R, _ = self.robot_pose()
+        pg, Rg, size = self._base_box()
+        signs = np.array([(-1, -1), (1, -1), (1, 1), (-1, 1)], dtype=float)
+        local = ((pg[None, :2] + (signs * size[:2]) @ Rg[:2, :2].T) - bp[None, :2]) @ R[:2, :2]
+        lo, hi = local.min(axis=0), local.max(axis=0)
+        self.rect = np.array([[lo[0], lo[1]], [hi[0], lo[1]], [hi[0], hi[1]], [lo[0], hi[1]]])  # base footprint (planning)
+        self.z_band = (float(pg[2] - size[2]), float(pg[2] + size[2]))
+        self.base_radius = float(np.max(np.linalg.norm(self.rect, axis=1)))
+        self.inflation_m = float(hi[1] - lo[1]) / 2 + 0.10
+        return bp
+
+    def _finish_reset(self, obs, info):
+        """Everything after the scene, the map and the segments are set: robot model, drive, filter, logs, segment 0."""
+        rs, model = self.rs, _raw_model(self.rs.sim)
         # contact bookkeeping (MuJoCo body -> oracle node), from the oracle lookup
         self.oracle_id_of_body = {b: oracle_id for oracle_id, bodies in self.oracle_lookup.bodies.items() for b in bodies}
         self.robot_bodies = _subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, rs.robots[0].robot_model.root_body))
@@ -256,7 +274,8 @@ class SafetyFilterEnv(gym.Wrapper):
         self.robot = RobotSpheres(model, _raw_data(rs.sim))
         self.drive = JointVelocityDrive.install(robot)
         self.base_ctrl, self.torso_ctrl = robot.composite_controller.part_controllers["base"], robot.composite_controller.part_controllers["torso"]
-        self.filter = SphereFilter(self.robot, self.policy)
+        hand = np.array([link in HAND_LINKS for link in self.robot.links])
+        self.filter = SphereFilter(self.robot, self.policy, row_spheres=hand if self.rows_for == "hand" else None)
         self.base_model = BaseModel()
         arm_j = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"robot0_joint{k}") for k in range(1, 8)]
         self.arm_q_lo, self.arm_q_hi = model.jnt_range[arm_j, 0].copy(), model.jnt_range[arm_j, 1].copy()
@@ -282,11 +301,15 @@ class SafetyFilterEnv(gym.Wrapper):
         cached_id = json.loads((cache / "meta.json").read_text())["oracle_snapshot_id"]
         if cached_id != self.oracle_graph.snapshot_id:
             raise RuntimeError(f"map cache {cache} belongs to another scene ({cached_id} != {self.oracle_graph.snapshot_id})")
+        self._load_map(cache)
+        self.n_capture += 1
+
+    def _load_map(self, cache: Path) -> None:
+        """The filter side's graph from a cached Hydra map, the id bridge to the oracle, and the planning balls."""
         bp, R, _ = self.robot_pose()
         self.graph = HydraSceneGraph(cache, self.oracle_graph.labels, robot_pose=(bp, float(np.arctan2(R[1, 0], R[0, 0]))))
         self.bridge = IdBridge.from_instances(self.graph, self.oracle_graph)
         self.lookup = hydra_lookup(self.oracle_lookup, self.bridge)
-        self.n_capture += 1
         # planning, standoff and pruning: kappa for every node admitted (Kasra, 2026-11-10), so these balls are never
         # smaller than the ones the rows use once a segment's admitted count is known
         self.plan_balls = self.graph.balls(n_admitted=len(self.graph.nodes), delta=self.policy.delta, m_d=self.policy.m_d)
@@ -315,9 +338,11 @@ class SafetyFilterEnv(gym.Wrapper):
         self.row_ids = self.graph.fragment_ids_of(self.bundle.admitted_ids, exempt=seg.exempt_ids)
         # delta split over the objects that get rows (eq. 4: delta_j = delta / |A|)
         balls = self.graph.balls(n_admitted=len(self.row_ids), delta=self.policy.delta, m_d=self.policy.m_d)
+        if self.rho_fixed is not None:  # the fixed-margin filter: every ball the same radius
+            balls = {nid: replace(b, rho=np.full(len(b.rho), self.rho_fixed)) for nid, b in balls.items()}
         self.row_balls = {nid: balls[nid] for nid in self.row_ids}
         # ground truth: every non-exempt node of the oracle graph, the same for every switch setting
-        self.exempt_oracle_ids = {self.bridge.to_oracle(hydra_id) for hydra_id in seg.exempt_ids} - {None}
+        self.exempt_oracle_ids = self._exempt_oracle_ids(seg)
         self.eval_ids = self.oracle_graph.fragment_ids_of([n.node_id for n in self.oracle_graph.obstacle_nodes()], exempt=self.exempt_oracle_ids)
         boxes = [self.oracle_graph.nodes[o].aabb() for o in self.eval_ids]  # oracle boxes are axis-aligned
         self.eval_lo, self.eval_hi = np.array([lo for lo, _ in boxes]).reshape(-1, 3), np.array([hi for _, hi in boxes]).reshape(-1, 3)
@@ -331,6 +356,10 @@ class SafetyFilterEnv(gym.Wrapper):
                               "kappa_s_bar_quantiles_m": dict(zip(["min", "50%", "90%", "max"], np.percentile(ks, [0, 50, 90, 100]).round(5).tolist())) if len(ks) else None})
         self.epoch += 1
         self.segment_start_tick = self.tick
+
+    def _exempt_oracle_ids(self, seg) -> set[str]:
+        """The oracle nodes exempt on the evaluation side: those of the segment's filter-side exemptions."""
+        return {self.bridge.to_oracle(hydra_id) for hydra_id in seg.exempt_ids} - {None}
 
     @property
     def segment(self):
@@ -404,7 +433,7 @@ class SafetyFilterEnv(gym.Wrapper):
         self.last_barrier = bar
         self._record(rec.as_dict(), np.asarray(action, dtype=float), q, bar)
         out = self.env.step(a.astype(np.float32))
-        if self.segment.kind == NAVIGATION and self.replans < MAX_REPLANS and self._path_deviation() > BETA_DEVIATION_BUDGET_M:
+        if self.segment.kind == NAVIGATION and self.replans < self.max_replans and self._path_deviation() > BETA_DEVIATION_BUDGET_M:
             self.replan()  # Assumption 1 premise violated: new path from here, new epoch (stage 1 + labels again)
         return out
 

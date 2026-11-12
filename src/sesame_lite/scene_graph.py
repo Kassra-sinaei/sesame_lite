@@ -456,7 +456,7 @@ def capture_scene_graph(rs_env, labels: LabelSpace | None = None) -> tuple[Scene
         if root < 0:
             continue
         bodies = _subtree_body_ids(model, root)
-        anchor = np.asarray(fx.pos, dtype=float) if getattr(fx, "pos", None) is not None else data.xpos[root]
+        anchor = data.xpos[root]  # world frame (fx.pos is relative to the fixture's group: a group offset > 3 m dropped every geom)
         box = _world_box(model, data, _collision_geoms(model, bodies, data=data, anchor=anchor))
         if box is not None:
             found.append((f"fixture:{name}", labels.label_of(class_words(cls)), *box, bodies))

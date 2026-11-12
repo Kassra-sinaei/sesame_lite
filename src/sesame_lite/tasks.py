@@ -1,5 +1,10 @@
 """RoboCasa task variants for the study (registered with robosuite on import).
 
+``Eval<Task>`` (EVAL_SPEC.md, section 4): RoboCasa's task unchanged (objects, success check, robot placement), plus six
+clutter objects: three floor obstacles (``clutter_floor_0..2``) and three counter objects (``clutter_counter_0..2``).
+RoboCasa cannot sample objects on the floor or at a chosen spot, so all six are spawned on a counter and moved by
+``sesame_lite.eval_scene`` after reset (it also moves the robot to its far start).
+
 ``NavigateKitchenClutter``: NavigateKitchen plus one floor object beside the planned path that the base must not
 touch (a flour bag). RoboCasa cannot sample objects on the floor, so it is spawned on a counter and moved next to the
 planned path after reset (``place_on_path``), before the 3DSG is captured.
@@ -12,8 +17,15 @@ from __future__ import annotations
 
 import mujoco
 import numpy as np
+from robocasa.environments.kitchen.atomic.kitchen_doors import CloseCabinet, CloseFridge
+from robocasa.environments.kitchen.atomic.kitchen_drawer import OpenDrawer
 from robocasa.environments.kitchen.atomic.kitchen_navigate import NavigateKitchen
-from robocasa.environments.kitchen.atomic.kitchen_pick_place import PickPlaceSinkToCounter
+from robocasa.environments.kitchen.atomic.kitchen_pick_place import (
+    PickPlaceCounterToCabinet,
+    PickPlaceCounterToSink,
+    PickPlaceCounterToStove,
+    PickPlaceSinkToCounter,
+)
 from robocasa.environments.kitchen.kitchen import FixtureType
 
 from sesame_lite.scene_graph import _raw_data, _raw_model
@@ -69,3 +81,50 @@ def place_on_path(rs_env, path_xy: np.ndarray) -> None:
         data.qvel[int(model.jnt_dofadr[jid]) : int(model.jnt_dofadr[jid]) + 6] = 0.0
     mujoco.mj_forward(model, data)
 
+
+
+# ---------------------------------------------------------------------- evaluation tasks (EVAL_SPEC.md)
+
+EVAL_FLOOR_CATEGORIES = ("flour_bag", "basket", "boxed_food")  # floor obstacles: sturdy, floor-plausible
+EVAL_COUNTER_CATEGORIES = ("bottled_water", "canned_food", "condiment_bottle", "boxed_drink", "mug")  # small: they fit on narrow counter strips
+
+
+class EvalClutter:
+    """Six extra objects on top of the task's own (see the module docstring)."""
+
+    def _get_obj_cfgs(self):
+        cfgs = super()._get_obj_cfgs()
+        counter = self.get_fixture(FixtureType.COUNTER)
+        spawn = dict(fixture=counter, size=(0.8, 0.6), pos=(None, None), offset=(0.0, 0.0))
+        cfgs += [dict(name=f"clutter_floor_{k}", obj_groups=cat, graspable=False, init_robot_here=False, placement=dict(spawn))
+                 for k, cat in enumerate(EVAL_FLOOR_CATEGORIES)]
+        cfgs += [dict(name=f"clutter_counter_{k}", obj_groups=EVAL_COUNTER_CATEGORIES, init_robot_here=False, placement=dict(spawn)) for k in range(3)]
+        return cfgs
+
+
+class EvalOpenDrawer(EvalClutter, OpenDrawer):
+    pass
+
+
+class EvalCloseFridge(EvalClutter, CloseFridge):
+    pass
+
+
+class EvalCloseCabinet(EvalClutter, CloseCabinet):
+    pass
+
+
+class EvalPickPlaceSinkToCounter(EvalClutter, PickPlaceSinkToCounter):
+    pass
+
+
+class EvalPickPlaceCounterToCabinet(EvalClutter, PickPlaceCounterToCabinet):
+    pass
+
+
+class EvalPickPlaceCounterToSink(EvalClutter, PickPlaceCounterToSink):
+    pass
+
+
+class EvalPickPlaceCounterToStove(EvalClutter, PickPlaceCounterToStove):
+    pass
