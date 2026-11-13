@@ -16,9 +16,10 @@ Rules (fixed before any run; every number is in ``RULE``):
    the standoff is >= 2.5 m long, where the robot touches nothing, and where all three floor obstacles can be placed.
    The robot faces along the first path segment.
 3. Floor obstacles (flour bag, basket, boxed food), at path fractions 0.3 / 0.5 / 0.7 on alternating sides (left,
-   right, left). The near edge lies ``base half-width - 0.06 m`` from the centreline, so the base on the path clips it
-   by 6 cm (checked: the robot on the path touches it); a way past must exist (checked: the robot shifted 0.11 m away
-   from it touches nothing). The obstacle touches nothing, lies over the floor and >= 0.6 m from start and goal.
+   right, left). The near edge lies ``base half-width - 0.03 m`` from the centreline, so the base on the path clips it
+   by 3 cm (checked: the robot on the path touches it); a way past must exist (checked: the robot shifted 0.15 m away
+   from it touches nothing, so at the ~9 cm the filter needs it keeps ~6 cm on both sides). (Round 1 of the tuning,
+   with 6 cm and 0.11 m, deadlocked every filtered run at an obstacle; Kasra, 2026-11-13.) The obstacle touches nothing, lies over the floor and >= 0.6 m from start and goal.
    Fractions tried in order f, f+-0.05, f+-0.1, f+-0.15, first on its side, then on the other side.
 4. Counter objects (3, categories drawn by RoboCasa from the small ``EVAL_COUNTER_CATEGORIES``): spots on a 2 cm grid at x-y
    distance 0.25-0.6 m from the target point (the point of the target's box nearest the standoff) and <= 0.9 m from
@@ -47,7 +48,8 @@ from sesame_lite.scene_graph import (COLLISION_GEOM_GROUP, HydraSceneGraph, IdBr
                                      capture_scene_graph, fixture_node_id, hydra_lookup)
 
 REPO = Path(__file__).resolve().parents[2]
-EVAL_DIR = REPO / "outputs" / "eval"
+EVAL_DIR = REPO / "outputs" / "eval"  # only output the paper can reference (Kasra, 2026-11-13)
+DEBUG_DIR = REPO / "outputs" / "eval_debug"  # logs, raw tuning runs and other working files
 SCENES_DIR = EVAL_DIR / "scenes"
 
 # roles and VLA exemptions per instruction ("target": the role the counter clutter is placed around)
@@ -66,7 +68,7 @@ INSTRUCTIONS = {
 ENV_KWARGS = {"split": "pretrain", "clutter_mode": 1}
 HORIZON = 1200
 
-RULE = dict(start_min_clearance_m=0.6, min_path_m=2.5, floor_fractions=(0.3, 0.5, 0.7), floor_sides=(1, -1, 1), clip_m=0.06, pass_extra_m=0.05,
+RULE = dict(start_min_clearance_m=0.6, min_path_m=2.5, floor_fractions=(0.3, 0.5, 0.7), floor_sides=(1, -1, 1), clip_m=0.03, pass_extra_m=0.12,
             keep_out_m=0.6, fraction_offsets=(0.0, 0.05, -0.05, 0.1, -0.1, 0.15, -0.15), counter_ring_m=(0.25, 0.6), counter_reach_m=0.9,
             counter_gap_objects_m=0.08, counter_gap_clutter_m=0.12, counter_grid_m=0.02, counter_level_m=0.01, counter_min_height_m=0.8, counter_ray_from_z=1.3, drop_m=0.002,
             store_below_floor_m=5.0)

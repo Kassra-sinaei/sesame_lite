@@ -1,4 +1,4 @@
-"""Summary of one tuning round (outputs/eval/tuning/<round>/): one row per run, as tuning_procedure.md lists.
+"""Summary of one tuning round (outputs/eval_debug/tuning/<round>/): one row per run, as tuning_procedure.md lists.
 
     python -s scripts/eval_tuning_summary.py r1
 
@@ -11,11 +11,11 @@ import json
 import sys
 from collections import Counter
 
-from sesame_lite.eval_scene import EVAL_DIR
+from sesame_lite.eval_scene import DEBUG_DIR, EVAL_DIR
 
 rnd = sys.argv[1]
 rows = []
-for path in sorted((EVAL_DIR / "tuning" / rnd).glob("*/*.json")):
+for path in sorted((DEBUG_DIR / "tuning" / rnd).glob("*/*.json")):
     if path.name.endswith(".dsg.json"):
         continue
     d = json.loads(path.read_text())

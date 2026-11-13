@@ -1,0 +1,11 @@
+scene,method,outcome,success,ticks,ticks_driving,ticks_manipulation,contact_ticks,touched,true_clearance_min_m,relaxed_ticks,hold_ticks,finger_patch_contact_ticks,tracking_error_max,unmapped_task_objects,binding_last_100_ticks
+close_cabinet_s0,nominal,unsafe_fail,False,1200,383,817,501,O:O(31) O:O(41) O:O(42) O:O(46) O:O(50) O:O(60) O:O(68) O:O(69) O:O(70) O:O(75),-0.0195,0,0,0,0.8232,,
+close_cabinet_s0,proposed,stalled,False,306,306,0,0,,0.0497,0,0,0,0.1274,,mobilebase0_wheeled_base -> basket O(11) (55); mobilebase0_wheeled_base -> box O(16) (45)
+close_fridge_s4,nominal,success_but_unsafe,True,748,202,546,11,O:O(79) O:O(81) O:O(82),-0.016,0,0,0,0.7345,,
+close_fridge_s4,proposed,stalled,False,210,210,0,0,,0.0375,0,0,0,0.0734,,mobilebase0_wheeled_base -> basket O(63) (89); mobilebase0_wheeled_base -> flour bag O(75) (11)
+counter_to_sink_s0,nominal,stalled,False,156,156,0,94,O:O(24),-0.0046,0,0,0,0.2417,,
+counter_to_sink_s0,proposed,stalled,False,161,161,0,72,O:O(24),-0.0053,0,0,0,0.1083,,robot0_link1 -> counter O(5) (100)
+open_drawer_s1,nominal,unsafe_fail,False,1200,226,974,210,O:O(23) O:O(60) O:O(61),-0.0322,0,0,0,2.1333,,
+open_drawer_s1,proposed,stalled,False,212,212,0,0,,0.0435,0,0,0,0.1594,,mobilebase0_wheeled_base -> basket O(26) (96); mobilebase0_wheeled_base -> flour bag O(24) (4)
+sink_to_counter_s0,nominal,success_but_unsafe,True,699,312,387,349,O:O(26) O:O(33) O:O(51) O:O(53) O:O(55),-0.0235,0,0,0,0.6813,object,
+sink_to_counter_s0,proposed,safe_fail,False,1200,415,785,0,,0.0273,0,0,0,0.0962,object,robot0_link5 -> counter O(45) (44); mobilebase0_wheeled_base -> hinge cabinet O(39) (28)

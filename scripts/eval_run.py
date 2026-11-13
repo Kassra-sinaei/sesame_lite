@@ -2,7 +2,8 @@
 
     MUJOCO_GL=egl python -s scripts/eval_run.py --scene counter_to_sink_s1000 --method nominal --map full
 
-Writes outputs/eval/<runs-dir>/<scene>/<method>_<map>.json (+ .npz, .dsg.json); a finished run is never repeated. The
+Writes outputs/eval/runs/<scene>/<method>_<map>.json (+ .npz, .dsg.json), or with ``--tuning r2`` the not-counted
+run of a tuning round to outputs/eval_debug/tuning/r2/; a finished run is never repeated. The
 plan is the scene's shared plan (never replanned); pi0.5's sampling noise is seeded with the scene seed.
 """
 
@@ -22,7 +23,7 @@ import torch  # noqa: E402
 import sesame_lite.tasks  # noqa: F401,E402  (registers the Eval tasks)
 from pi05_nominal import Pi05Policy  # noqa: E402
 from sesame_lite.env import MissionRunner, SesameRoboCasaEnv, _json_default  # noqa: E402
-from sesame_lite.eval_scene import EVAL_DIR, SCENES_DIR, EvalFilterEnv  # noqa: E402
+from sesame_lite.eval_scene import DEBUG_DIR, EVAL_DIR, SCENES_DIR, EvalFilterEnv  # noqa: E402
 from sesame_lite.filter import FilterPolicy  # noqa: E402
 
 METHODS = ("nominal", "ee", "fixed", "noissf", "proposed")
@@ -50,11 +51,11 @@ ap.add_argument("--method", required=True, choices=METHODS)
 ap.add_argument("--map", default="full", choices=("full", "look"))
 ap.add_argument("--policy", default="{}", help='JSON FilterPolicy overrides (tuning rounds only), e.g. {"alpha": 3.0}')
 ap.add_argument("--video", choices=("auto", "on", "off"), default="auto", help="auto: on for counted Nominal and Proposed runs (section 9)")
-ap.add_argument("--runs-dir", default="runs", help='under outputs/eval/: "runs" (counted) or e.g. "tuning/r1" (stage 0b, not counted)')
+ap.add_argument("--tuning", default=None, help="a tuning round (stage 0b, not counted), e.g. r2")
 args = ap.parse_args()
 scene_dir = SCENES_DIR / args.scene
 scene = json.loads((scene_dir / "scene.json").read_text())
-out = EVAL_DIR / args.runs_dir / args.scene / f"{args.method}_{args.map}.json"
+out = (DEBUG_DIR / "tuning" / args.tuning if args.tuning else EVAL_DIR / "runs") / args.scene / f"{args.method}_{args.map}.json"
 if out.exists():
     print(f"RESULT exists {out}")
     sys.exit(0)
@@ -65,10 +66,10 @@ obs, _ = env.reset(scene_dir=scene_dir)
 env.method_title = TITLES[args.method] + (", look-around map" if args.map == "look" else "")
 vla = Pi05Policy(scene["task"])
 video = None
-if args.video == "on" or (args.video == "auto" and args.runs_dir == "runs" and args.method in ("nominal", "proposed")):
+if args.video == "on" or (args.video == "auto" and not args.tuning and args.method in ("nominal", "proposed")):
     from sesame_lite.viz import EvalVideo
 
-    video = EvalVideo(env, EVAL_DIR / "videos" / args.scene / f"{args.method}_{args.map}")
+    video = EvalVideo(env, (DEBUG_DIR / "tuning_videos" / args.tuning if args.tuning else EVAL_DIR / "videos") / args.scene / f"{args.method}_{args.map}")
 torch.manual_seed(scene["seed"])  # the policy's sampling noise: the same sequence for every method of a scene
 success, stalled = MissionRunner(env, vla=vla, on_frame=video).run(obs)
 result = {"scene": args.scene, "method": args.method, "map": args.map, "seed": scene["seed"], "wall_s": time.time() - t0, **env.summary(success, stalled)}
