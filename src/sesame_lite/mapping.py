@@ -256,9 +256,14 @@ def check_camera(cam: MappingCamera, poses: list, oracle_graph: SceneGraph, tabl
     group[1] = 1  # the visual geoms the camera renders
     hit = np.array([-1], np.int32)
     out = []
-    for i in (0, len(poses) // 2):
+    order = [0, len(poses) // 2] + [k for k in range(len(poses)) if k not in (0, len(poses) // 2)]
+    for i in order:  # the first two poses (0 and the middle one, else the next ones) that see something in range
+        if len(out) == 2:
+            break
         depth, _, _, pos, R = cam.render(*poses[i], noise=False)
         v, u = np.nonzero(np.isfinite(depth))
+        if len(v) < n_rays:
+            continue
         sel = rng.choice(len(v), min(n_rays, len(v)), replace=False)
         diff = []
         for k in sel:
@@ -269,9 +274,11 @@ def check_camera(cam: MappingCamera, poses: list, oracle_graph: SceneGraph, tabl
                 continue  # the ray hits the robot, which the mapping renders leave out
             diff.append(abs(float(depth[v[k], u[k]]) - dist / np.linalg.norm(ray)))
         diff = np.array(diff)
+        if len(diff) == 0:
+            continue
         out.append({"pose": [float(x) for x in poses[i][0]] + [poses[i][1], poses[i][2]], "rays": int(len(diff)), "median_m": float(np.median(diff)), "p90_m": float(np.percentile(diff, 90))})
     cam.rng = np.random.default_rng(cam.seed)  # the check does not use up noise draws of the mapping frames
-    if not all(c["median_m"] < max_median_m for c in out):
+    if len(out) < 2 or not all(c["median_m"] < max_median_m for c in out):
         raise RuntimeError(f"camera check failed (median |rendered - ray-cast depth| >= 2 cm): {out}")
     return {"passed": True, "poses": out}
 

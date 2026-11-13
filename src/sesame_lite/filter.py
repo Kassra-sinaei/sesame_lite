@@ -189,16 +189,19 @@ class SphereFilter:
     """Rows of eq. (8) for every robot sphere against every admitted object, and the QP of eq. (9)."""
 
     def __init__(self, robot, policy: FilterPolicy = FilterPolicy(), device: str = "cuda", row_spheres: np.ndarray | None = None):
-        """``row_spheres``: a mask of the robot spheres that get rows (None: all). The barrier is still computed for
-        every sphere (receipts, videos)."""
+        """``row_spheres``: a mask of the robot spheres that get rows (None: all). Pairs without a row get h = +inf in
+        the barrier, so they are in no receipt either."""
         self.robot, self.policy, self.device = robot, policy, device
         self.row_spheres = row_spheres
         self.arm_limit = np.asarray(policy.arm_velocity_limits, float)
         self.set_objects({})
 
-    def set_objects(self, balls: dict) -> None:
-        """The admitted objects of a segment and their balls (uncertainty.Balls)."""
+    def set_objects(self, balls: dict, sphere_masks: dict | None = None) -> None:
+        """The admitted objects of a segment and their balls (uncertainty.Balls). ``sphere_masks``: object id -> mask of
+        the robot spheres that get rows against that object (default: all; ``row_spheres`` applies on top)."""
         self.object_ids = list(balls)
+        base = np.ones(self.robot.n, dtype=bool) if self.row_spheres is None else np.asarray(self.row_spheres, dtype=bool)
+        self.pair_mask = np.stack([base & np.asarray((sphere_masks or {}).get(o, base), dtype=bool) for o in self.object_ids], axis=1) if self.object_ids else np.zeros((self.robot.n, 0), bool)
         t = dict(device=self.device, dtype=torch.float64)
         pts = [balls[o].points for o in self.object_ids]
         self.points_np = np.vstack(pts) if pts else np.zeros((0, 3))
@@ -232,8 +235,10 @@ class SphereFilter:
             w = torch.zeros((S, O, 3), **t).scatter_add(1, idx[..., None].expand(-1, -1, 3), pi[..., None] * D / dist[..., None])
             grad = torch.einsum("sox,sxq->soq", w, J)
             exact = torch.full((S, O), torch.inf, **t).scatter_reduce(1, idx, g, reduce="amin")
-            out = Barrier((psi - r[:, None]).cpu().numpy(), (exact - r[:, None]).cpu().numpy(), grad.cpu().numpy(), torch.argmin(g, dim=1).cpu().numpy(), c_np, r_np)
-        if not (np.all(np.isfinite(out.h)) and np.all(np.isfinite(out.grad))):
+            h, ex = (psi - r[:, None]).cpu().numpy(), (exact - r[:, None]).cpu().numpy()
+            h[~self.pair_mask], ex[~self.pair_mask] = np.inf, np.inf  # pairs without a row
+            out = Barrier(h, ex, grad.cpu().numpy(), torch.argmin(g, dim=1).cpu().numpy(), c_np, r_np)
+        if not (np.all(np.isfinite(out.h[self.pair_mask])) and np.all(np.isfinite(out.grad))):
             raise FloatingPointError("non-finite barrier value or gradient")
         return out
 
@@ -246,10 +251,8 @@ class SphereFilter:
         gk = bar.grad[..., KNOWN].reshape(S * O, -1)
         b = p.alpha * bar.h.reshape(-1) + gk @ np.asarray(known_qdot, float) - p.eps * np.einsum("ij,ij->i", gc, gc)
         pairs = np.stack(np.unravel_index(np.arange(S * O), (S, O)), axis=1)
-        if self.row_spheres is not None:
-            keep = self.row_spheres[pairs[:, 0]]
-            return -gc[keep], b[keep], pairs[keep]
-        return -gc, b, pairs
+        keep = self.pair_mask.reshape(-1)
+        return -gc[keep], b[keep], pairs[keep]
 
     def box(self, q: np.ndarray, base_bounds: tuple[np.ndarray, np.ndarray], q_lo: np.ndarray, q_hi: np.ndarray, dt: float) -> tuple[np.ndarray, np.ndarray]:
         """U: the base's reachable mean velocities (BaseModel.bounds); for each arm joint its velocity limit and the
@@ -305,7 +308,7 @@ class SphereFilter:
             else:
                 u, outcome = np.zeros(n), "hold"
             solve_ms = (time.perf_counter() - t1) * 1e3
-        if bar.h.size:
+        if np.isfinite(bar.h).any():
             i, j = np.unravel_index(int(np.argmin(bar.h)), bar.h.shape)
             h_min, pair, exact_min = float(bar.h[i, j]), [int(i), self.robot.links[i], self.object_ids[j]], float(bar.exact.min())
         else:

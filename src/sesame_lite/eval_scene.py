@@ -26,12 +26,15 @@ Rules (fixed before any run; every number is in ``RULE``):
    >= 0.8 m, the first thing a downward ray from 1.3 m hits; centre and the four footprint
    corners hit a counter top within 1 cm of its height), touches nothing, keeps >= 8 cm (x-y) from every other free object and
    >= 12 cm from the other counter clutter.
+   If no counter top lies within 0.9 m of the standoff at all (the fridges: Kasra, 2026-11-13), the scene has no
+   counter objects; the three are stored 5 m under the floor (gravity compensated, out of every view).
 A seed whose scene cannot be built by these rules is skipped (logged), and the next seed is taken.
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import mujoco
@@ -53,19 +56,25 @@ INSTRUCTIONS = {
     "close_fridge": dict(task="EvalCloseFridge", roles={"fridge": {"fixture_ref": "fxtr"}}, exempt=["fridge"], target="fridge"),
     "close_cabinet": dict(task="EvalCloseCabinet", roles={"cabinet": {"fixture_ref": "fxtr"}}, exempt=["cabinet"], target="cabinet"),
     "sink_to_counter": dict(task="EvalPickPlaceSinkToCounter", roles={"sink": {"fixture_ref": "sink"}, "object": {"object": "obj"}, "container": {"object": "container"}},
-                            exempt=["sink", "object", "container"], target="object"),
+                            exempt=["sink", "object", "container"], target="object", patch="object"),
     "counter_to_cabinet": dict(task="EvalPickPlaceCounterToCabinet", roles={"cabinet": {"fixture_ref": "cab"}, "object": {"object": "obj"}},
-                               exempt=["cabinet", "object"], target="object"),
-    "counter_to_sink": dict(task="EvalPickPlaceCounterToSink", roles={"sink": {"fixture_ref": "sink"}, "object": {"object": "obj"}}, exempt=["sink", "object"], target="object"),
+                               exempt=["cabinet", "object"], target="object", patch="object"),
+    "counter_to_sink": dict(task="EvalPickPlaceCounterToSink", roles={"sink": {"fixture_ref": "sink"}, "object": {"object": "obj"}}, exempt=["sink", "object"], target="object", patch="object"),
     "counter_to_stove": dict(task="EvalPickPlaceCounterToStove", roles={"stove": {"fixture_ref": "stove"}, "object": {"object": "obj"}, "container": {"object": "container"},
-                                                                     "plate": {"object": "obj_container"}}, exempt=["stove", "object", "container", "plate"], target="object"),
+                                                                     "plate": {"object": "obj_container"}}, exempt=["stove", "object", "container", "plate"], target="object", patch="object"),
 }
 ENV_KWARGS = {"split": "pretrain", "clutter_mode": 1}
 HORIZON = 1200
 
 RULE = dict(start_min_clearance_m=0.6, min_path_m=2.5, floor_fractions=(0.3, 0.5, 0.7), floor_sides=(1, -1, 1), clip_m=0.06, pass_extra_m=0.05,
             keep_out_m=0.6, fraction_offsets=(0.0, 0.05, -0.05, 0.1, -0.1, 0.15, -0.15), counter_ring_m=(0.25, 0.6), counter_reach_m=0.9,
-            counter_gap_objects_m=0.08, counter_gap_clutter_m=0.12, counter_grid_m=0.02, counter_level_m=0.01, counter_min_height_m=0.8, counter_ray_from_z=1.3, drop_m=0.002)
+            counter_gap_objects_m=0.08, counter_gap_clutter_m=0.12, counter_grid_m=0.02, counter_level_m=0.01, counter_min_height_m=0.8, counter_ray_from_z=1.3, drop_m=0.002,
+            store_below_floor_m=5.0)
+# the support of a picked object is not exempt; only the finger spheres against its points within this x-y radius of
+# the object (filter side: the object's map node centre; truth: the object's position when manipulation starts), during
+# the manipulation segment (Kasra, 2026-11-13); every method is scored the same way
+FINGER_PATCH_RADIUS_M = 0.15
+FINGER_LINKS = ("gripper0_right_leftfinger", "gripper0_right_rightfinger")
 BASE_JOINTS = ("mobilebase0_joint_mobile_forward", "mobilebase0_joint_mobile_side", "mobilebase0_joint_mobile_yaw")
 FLOOR_CLUTTER = ("clutter_floor_0", "clutter_floor_1", "clutter_floor_2")
 COUNTER_CLUTTER = ("clutter_counter_0", "clutter_counter_1", "clutter_counter_2")
@@ -289,6 +298,12 @@ class _Prep:
             placed.append(info)
         return placed
 
+    def counter_within_reach(self, standoff_xy) -> bool:
+        """Is any counter top (as ``_counter_top``) within the reach radius of the standoff (2 cm grid)?"""
+        r, g = RULE["counter_reach_m"], RULE["counter_grid_m"]
+        xs = np.arange(-r, r + 1e-9, g)
+        return any(self._counter_top(standoff_xy + np.array([x, y])) is not None for x in xs for y in xs if x * x + y * y <= r * r)
+
     def _counter_top(self, xy) -> tuple[int, float] | None:
         """(geom, height) under x-y: the first collision geom a downward ray hits, if it belongs to a counter."""
         group = np.zeros(6, np.uint8)
@@ -369,6 +384,8 @@ def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Pa
 
     # 3. counter objects around the target
     target_node = lookup0.node_of.get(_oracle_name(rs, spec["roles"][spec["target"]]))
+    if target_node is None:
+        raise ScenePrepError(f"the target ({spec['target']}) has no node in the scene graph")
     lo, hi = oracle0.nodes[target_node].aabb()
     target_xy = np.clip(standoff_xy, lo[:2], hi[:2])  # the point of the target's box nearest the standoff
     task_objects = [n for n in rs.objects if n not in prep.clutter]
@@ -376,7 +393,14 @@ def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Pa
     for name in task_objects:
         pts = _corners(m, d, _collision_geoms(m, _subtree_body_ids(m, rs.obj_body_id[name])))
         others.append((pts.min(axis=0), pts.max(axis=0)))
-    counter = prep.place_counter(target_xy, standoff_xy, others)
+    if prep.counter_within_reach(standoff_xy):
+        counter, stored = prep.place_counter(target_xy, standoff_xy, others), []
+    else:  # no counter top within reach (Kasra, 2026-11-13): no counter objects; they are stored under the floor
+        counter, stored = [], list(COUNTER_CLUTTER)
+        for k, name in enumerate(stored):
+            c = prep.clutter[name]
+            place_body(m, d, c["body"], c["gids"], standoff_xy + np.array([0.5 * k, 0.0]), 0.0, prep.floor_z - RULE["store_below_floor_m"])
+        hold_still(m, stored_bodies(rs, stored))
     mujoco.mj_forward(m, d)
     if prep.robot_touches():
         raise ScenePrepError("the robot touches something at the start of the final scene")
@@ -392,10 +416,11 @@ def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Pa
         "task_pose": {"xy": goal_xy.round(4).tolist(), "yaw": round(goal_yaw, 5)},
         "standoff": {"xy": np.round(standoff_xy, 4).tolist(), "yaw": round(goal_yaw, 5), "offset_m": offset},
         "start": {"xy": chosen["start"].round(4).tolist(), "yaw": round(chosen["yaw"], 5), "places_tried": tried, "path_length_m": round(chosen["length"], 3)},
-        "plan": {"roles": spec["roles"], "nav_target": nav_oracle_name, "path_xy": np.round(chosen["path"], 4).tolist(), "exempt": spec["exempt"], "target": spec["target"]},
+        "plan": {"roles": spec["roles"], "nav_target": nav_oracle_name, "path_xy": np.round(chosen["path"], 4).tolist(), "exempt": spec["exempt"], "target": spec["target"],
+                 "patch": spec.get("patch")},
         "base_qpos": [float(d.qpos[m.jnt_qposadr[j]]) for j in jid],
         "clutter_qpos": {name: d.qpos[_free_adr(m, c["body"])[0]:_free_adr(m, c["body"])[0] + 7].tolist() for name, c in prep.clutter.items()},
-        "floor_obstacles": chosen["floor"], "counter_objects": counter, "target_point_xy": np.round(target_xy, 4).tolist(),
+        "floor_obstacles": chosen["floor"], "counter_objects": counter, "stored_below_floor": stored, "target_point_xy": np.round(target_xy, 4).tolist(),
         "snapshot_id": oracle.snapshot_id, "snapshot_id_map_plan": oracle0.snapshot_id, "rule": RULE,
     }
     (out_dir / "scene.json").write_text(json.dumps(scene, indent=1))
@@ -417,7 +442,19 @@ def apply_scene(env: SafetyFilterEnv, scene: dict) -> None:
     for name, q in scene["clutter_qpos"].items():
         adr, dof = _free_adr(model, env.rs.obj_body_id[name])
         data.qpos[adr:adr + 7], data.qvel[dof:dof + 6] = q, 0.0
+    hold_still(model, stored_bodies(env.rs, scene.get("stored_below_floor", [])))
     mujoco.mj_forward(model, data)
+
+
+def stored_bodies(rs, names) -> set[int]:
+    model = _raw_model(rs.sim)
+    return set().union(set(), *(_subtree_body_ids(model, rs.obj_body_id[n]) for n in names))
+
+
+def hold_still(model, bodies) -> None:
+    """Objects stored under the floor: gravity compensated, so they stay where they are (nothing is near them)."""
+    for b in bodies:
+        model.body_gravcomp[b] = 1.0
 
 
 # --------------------------------------------------------------------------- the evaluation environment
@@ -450,6 +487,7 @@ class EvalFilterEnv(SafetyFilterEnv):
         self.plan = scene["plan"]
         self.plan_kwargs = dict(inflation_m=self.inflation_m)
         self.segments = self._eval_segments()
+        self._patch_setup()
         return self._finish_reset(obs, info)
 
     def _eval_segments(self) -> list[Segment]:
@@ -473,10 +511,103 @@ class EvalFilterEnv(SafetyFilterEnv):
     def _exempt_oracle_ids(self, seg) -> set[str]:
         return set(self.exempt_by_segment[seg.index])
 
+    # ---- the finger patch on the picked object's support (FINGER_PATCH_RADIUS_M)
+
+    def _patch_setup(self) -> None:
+        """The support (RoboCasa's placement surface of the picked object) unless it is exempt anyway (the sink)."""
+        self.patch, self.patch_target, self.patch_contact = None, None, False
+        role = self.plan.get("patch")
+        if not role:
+            return
+        spec = self.plan["roles"][role]
+        oracle_obj = resolve_role(spec, self.rs, self.oracle_lookup)
+        oracle_sup = self.oracle_lookup.support.get(oracle_obj)
+        if oracle_sup is None or oracle_sup in self.exempt_by_segment[1]:
+            return
+        map_obj = resolve_role(spec, self.rs, self.lookup)
+        map_sup = self.lookup.support.get(map_obj) if map_obj is not None else None
+        self.patch = {"oracle_support": oracle_sup, "object_body": self.rs.obj_body_id[spec["object"]], "map_object": map_obj,
+                      "map_support": self.bridge.instance_nodes(map_sup) if map_sup is not None else [], "radius_m": FINGER_PATCH_RADIUS_M}
+        model = _raw_model(self.rs.sim)
+        self.finger_bodies = set().union(*(_subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, b)) for b in FINGER_LINKS))
+
+    def _patch_on(self) -> bool:
+        return self.patch is not None and self.patch_target is not None and self.segment.kind == VLA
+
+    def begin_segment(self, index: int) -> None:
+        if getattr(self, "patch", None) is not None and self.segments[index].kind == VLA:
+            self.patch_target = _raw_data(self.rs.sim).xpos[self.patch["object_body"]][:2].copy()  # truth: where manipulation starts
+        super().begin_segment(index)
+
+    def _filter_objects(self, seg):
+        """The support's points outside the patch become a separate object with rows for the finger spheres only; the
+        full support keeps the rows of every other sphere."""
+        balls, masks = super()._filter_objects(seg)
+        p = self.patch
+        if seg.kind != VLA or p is None or p["map_object"] is None:
+            return balls, masks
+        balls, masks = dict(balls), {}
+        finger = np.array([link in FINGER_LINKS for link in self.robot.links])
+        centre = np.asarray(self.graph.nodes[p["map_object"]].center[:2])
+        for nid in p["map_support"]:
+            if nid not in balls:
+                continue
+            b = balls[nid]
+            out = np.linalg.norm(b.points[:, :2] - centre, axis=1) > p["radius_m"]
+            masks[nid] = ~finger
+            if out.any():
+                balls[f"{nid}~fingers"] = replace(b, points=b.points[out], rho=b.rho[out], capped=b.capped[out])
+                masks[f"{nid}~fingers"] = finger
+        return balls, masks
+
+    def _touched_oracle_ids(self) -> set[str]:
+        """As the base class, but a finger contact with the support inside the patch is not a collision."""
+        if not self._patch_on():
+            return super()._touched_oracle_ids()
+        model, data = _raw_model(self.rs.sim), _raw_data(self.rs.sim)
+        sup, r = self.patch["oracle_support"], self.patch["radius_m"]
+        out = set()
+        for i in range(data.ncon):
+            c = data.contact[i]
+            b1, b2 = int(model.geom_bodyid[c.geom1]), int(model.geom_bodyid[c.geom2])
+            for a, b in ((b1, b2), (b2, b1)):
+                if a in self.robot_bodies and b in self.oracle_id_of_body:
+                    oid = self.oracle_id_of_body[b]
+                    if oid == sup and a in self.finger_bodies and np.linalg.norm(c.pos[:2] - self.patch_target) <= r:
+                        self.patch_contact = True
+                        continue
+                    out.add(oid)
+        return out
+
+    def _truth(self, centres: np.ndarray, radii: np.ndarray) -> dict:
+        """As the base class, but finger spheres over the patch are left out of the clearance to the support."""
+        out = super()._truth(centres, radii)
+        if not self._patch_on():
+            return out
+        finger = np.array([link in FINGER_LINKS for link in self.robot.links])
+        over = finger & (np.linalg.norm(centres[:, :2] - self.patch_target, axis=1) <= self.patch["radius_m"])
+        sup = self.patch["oracle_support"]
+        if not over.any():
+            return out
+        data, keep = _raw_data(self.rs.sim), np.flatnonzero(~over)
+        for key, owners in (("clearance", self.eval_set), ("clearance_rows", self.row_oracle)):
+            if sup not in owners:
+                continue
+            a, pa = self.true_geometry.clearance(data, centres, radii, owners - {sup})
+            b, pb = self.true_geometry.clearance(data, centres[keep], radii[keep], {sup})
+            pb = None if pb is None else [int(keep[pb[0]]), pb[1]]
+            best, pair = min(((v, pr) for v, pr in ((a, pa), (b, pb)) if v is not None), default=(None, None), key=lambda x: x[0])
+            out[key] = best
+            if key == "clearance":
+                out["pair"] = None if pair is None else [self.robot.links[pair[0]], f"O:{pair[1]}"]
+        return out
+
     def _record(self, rec, action, q, bar) -> None:
+        self.patch_contact = False
         super()._record(rec, action, q, bar)
         g = self.ground_truth[-1]
         g["touched_not_admitted"] = [o for o in g["touched"] if o[2:] not in self.row_oracle]
+        g["finger_patch_contact"] = self.patch_contact
 
     def summary(self, success: bool, stalled: bool) -> dict:
         out = super().summary(success, stalled)
@@ -488,6 +619,8 @@ class EvalFilterEnv(SafetyFilterEnv):
             contacts_not_admitted=sorted({o for g in gt for o in g["touched_not_admitted"]}),
             relaxed_share=out["feasibility"]["relaxed_ticks"] / max(out["steps"], 1),
             tracking_error_max=(dist.get("norm") or {}).get("max"), unmapped_task_objects=self.unmapped_roles,
-            support_of_object=f"O:{self.oracle_lookup.support[obj]}" if obj in self.oracle_lookup.support else None,  # for the open support-exemption choice
+            support_of_object=f"O:{self.oracle_lookup.support[obj]}" if obj in self.oracle_lookup.support else None,
+            finger_patch={k: v for k, v in (self.patch or {}).items() if k != "object_body"} or None,
+            finger_patch_contact_ticks=sum(bool(g.get("finger_patch_contact")) for g in gt),
             snapshot_ok=self.oracle_graph.snapshot_id == self.scene["snapshot_id"])
         return out

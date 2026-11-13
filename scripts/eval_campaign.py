@@ -22,13 +22,15 @@ EVAL = REPO / "outputs" / "eval"
 
 ap = argparse.ArgumentParser()
 ap.add_argument("runs")
+ap.add_argument("--runs-dir", default="runs", help="as scripts/eval_run.py")
+ap.add_argument("--policy", default="{}", help="as scripts/eval_run.py (tuning rounds only)")
 ap.add_argument("-j", type=int, default=3, help="processes at once (pi0.5 needs ~11 GB of GPU memory each)")
 args = ap.parse_args()
 runs = [line.split() for line in Path(args.runs).read_text().splitlines() if line.strip() and not line.startswith("#")]
 
 
 def result_path(scene, method, kind) -> Path:
-    return EVAL / "runs" / scene / f"{method}_{kind}.json"
+    return EVAL / args.runs_dir / scene / f"{method}_{kind}.json"
 
 
 def log_repeat(run, attempt, reason) -> None:
@@ -38,19 +40,19 @@ def log_repeat(run, attempt, reason) -> None:
         w = csv.writer(f)
         if new:
             w.writerow(["utc", "scene", "method", "map", "attempt", "reason"])
-        w.writerow([datetime.now(timezone.utc).isoformat(timespec="seconds"), *run, attempt, reason])
+        w.writerow([datetime.now(timezone.utc).isoformat(timespec="seconds"), *run, attempt, f"[{args.runs_dir}] {reason}"])
 
 
 def run_one(run) -> str:
     scene, method, kind = run
     if result_path(*run).exists():
         return f"done already  {' '.join(run)}"
-    log = EVAL / "logs" / f"{scene}_{method}_{kind}.log"
+    log = EVAL / "logs" / args.runs_dir.replace("/", "_") / f"{scene}_{method}_{kind}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     for attempt in (1, 2):
         t0 = time.time()
         with open(log, "a") as f:
-            code = subprocess.call([sys.executable, "-s", str(REPO / "scripts" / "eval_run.py"), "--scene", scene, "--method", method, "--map", kind],
+            code = subprocess.call([sys.executable, "-s", str(REPO / "scripts" / "eval_run.py"), "--scene", scene, "--method", method, "--map", kind, "--runs-dir", args.runs_dir, "--policy", args.policy],
                                    stdout=f, stderr=subprocess.STDOUT, cwd=REPO, env={**os.environ, "MUJOCO_GL": "egl"})
         if result_path(*run).exists():
             return f"finished      {' '.join(run)}  ({time.time() - t0:.0f} s)"

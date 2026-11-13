@@ -95,7 +95,7 @@ class WorldRenderer:
         mujoco.mjv_connector(g, mujoco.mjtGeom.mjGEOM_LINE, width, np.asarray(a, float), np.asarray(b, float))
         scn.ngeom += 1
 
-    def render(self, *, robot_only: bool = False) -> np.ndarray:
+    def render(self, *, robot_only: bool = False, overlay: bool = True) -> np.ndarray:
         env = self.env
         self.renderer.update_scene(self.data, camera=self.cam, scene_option=self.opt)
         scn = self.renderer.scene
@@ -106,6 +106,8 @@ class WorldRenderer:
                     gg.rgba[3] = 0.0
                 elif gg.objid in self.wall_geoms:
                     gg.rgba[3] = 0.12
+        if not overlay:
+            return self.renderer.render().copy()
         bar = env.last_barrier
         h_sphere = bar.h.min(axis=1) if bar.h.shape[1] else np.full(len(bar.radii), np.inf)
         for c, r, h in zip(bar.centres, bar.radii, h_sphere):
@@ -177,7 +179,7 @@ class EpisodeRecorder:
         closest = "-"
         if rec["h_min_pair"] is not None:
             _, link, obj = rec["h_min_pair"]
-            closest = f"{link.replace('robot0_', '').replace('mobilebase0_', 'base ').replace('gripper0_right_', 'gripper ')}  ->  {env.graph.nodes[obj].category} ({obj})"
+            closest = f"{link.replace('robot0_', '').replace('mobilebase0_', 'base ').replace('gripper0_right_', 'gripper ')}  ->  {env.graph.nodes[env._node_id(obj)].category} ({obj})"
         line2 = f"closest: {closest}" + ("   CONTACT: " + ", ".join(gt["touched"]) if gt["touched"] else "")
         draw.rectangle([0, frame.height - 62, frame.width, frame.height], fill=(0, 0, 0, 170))
         bad = bool(gt["touched"]) or (ht is not None and ht < 0)
@@ -212,3 +214,63 @@ class EpisodeRecorder:
             write_video(str(path), np.stack(self.frames), fps=fps)
         if robot_path is not None and self.robot_frames:
             write_video(str(robot_path), np.stack(self.robot_frames), fps=fps)
+
+
+class EvalVideo:
+    """EVAL_SPEC.md, section 9: 1920x1080 at the simulation rate (20 Hz) from an outside camera that follows the robot,
+    once clean and once with the overlay (spheres coloured by h, the balls near the robot, the closest pair, smallest h
+    and true clearance), and the robot's cameras as the policy saw them. Frames are encoded as the run goes."""
+
+    def __init__(self, env, stem: Path, *, width: int = 1920, height: int = 1080, fps: int = 20):
+        import imageio.v2 as imageio
+
+        stem.parent.mkdir(parents=True, exist_ok=True)
+        self.world = WorldRenderer(env, width=width, height=height, view="three_quarter")
+        self.paths = {k: stem.parent / f"{stem.name}_{k}.mp4" for k in ("clean", "overlay", "robot_camera")}
+        self.writers = {k: imageio.get_writer(str(p), fps=fps, codec="libx264", quality=8, macro_block_size=1) for k, p in self.paths.items()}
+        self.font, self.small = _font(40), _font(30)
+        self.yaw = None
+        self.last = None
+
+    def _follow(self, env) -> None:
+        base, yaw = env.robot_pose()[0], env.base_yaw()
+        self.yaw = yaw if self.yaw is None else self.yaw + 0.05 * float(np.arctan2(np.sin(yaw - self.yaw), np.cos(yaw - self.yaw)))  # smoothed
+        cam = self.world.cam
+        cam.lookat[:] = [base[0] + 0.35 * np.cos(self.yaw), base[1] + 0.35 * np.sin(self.yaw), 0.8]  # mid-height of the robot
+        cam.distance, cam.azimuth, cam.elevation = 3.0, np.degrees(self.yaw) + 30.0, -28.0
+
+    def __call__(self, env) -> None:
+        self._follow(env)
+        self.writers["clean"].append_data(self.world.render(overlay=False))
+        frame = Image.fromarray(self.world.render())
+        rec, gt = env.receipts[-1], env.ground_truth[-1]
+        draw = ImageDraw.Draw(frame, "RGBA")
+        h, ht = rec["h_min"], gt["clearance"]
+        line1 = f"{env.method_title}  |  t = {rec['tick'] * 0.05:4.1f} s  |  QP {rec['outcome']}"
+        line2 = f"smallest h {'-' if h is None else f'{100 * h:+5.1f} cm'}   true clearance {'> 1 m' if ht is None else f'{100 * ht:+5.1f} cm'}"
+        if gt["touched"]:
+            line2 += "   CONTACT"
+        draw.rectangle([0, 0, frame.width, 100], fill=(0, 0, 0, 160))
+        draw.text((20, 8), line1, font=self.font, fill=(255, 255, 255))
+        draw.text((20, 56), line2, font=self.small, fill=(255, 95, 95) if gt["touched"] or (ht is not None and ht < 0) else (255, 255, 255))
+        self.last = np.asarray(frame)
+        self.writers["overlay"].append_data(self.last)
+        obs = getattr(env.env, "last_raw_obs", None) or {}
+        cams = [np.ascontiguousarray(obs[k]) for k in sorted(obs) if k.startswith("video.")]
+        if cams:
+            self.writers["robot_camera"].append_data(np.concatenate(cams, axis=1))
+
+    def close(self, result: dict, hold_s: float = 2.0, fps: int = 20) -> None:
+        """The overlay stream ends on a banner with the outcome; the clean one ends as it is."""
+        if self.last is not None:
+            text = f"{'SUCCESS' if result['success'] else result['outcome'].replace('_', ' ').upper()}  -  " + ("no contact" if result["contact_ticks"] == 0 else f"{result['contact_ticks']} contact ticks")
+            last = Image.fromarray(self.last)
+            draw = ImageDraw.Draw(last, "RGBA")
+            y = last.height // 2 - 40
+            draw.rectangle([0, y, last.width, y + 80], fill=(40, 160, 90, 220) if result["success"] and result["contact_ticks"] == 0 else (200, 60, 50, 220))
+            draw.text(((last.width - draw.textlength(text, font=self.font)) / 2, y + 16), text, font=self.font, fill=(255, 255, 255))
+            for _ in range(int(hold_s * fps)):
+                self.writers["overlay"].append_data(np.asarray(last))
+        for w in self.writers.values():
+            w.close()
+        self.world.renderer.close()

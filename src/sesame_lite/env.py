@@ -348,7 +348,7 @@ class SafetyFilterEnv(gym.Wrapper):
         self.eval_lo, self.eval_hi = np.array([lo for lo, _ in boxes]).reshape(-1, 3), np.array([hi for _, hi in boxes]).reshape(-1, 3)
         row_oracle = {self.bridge.to_oracle(nid) for nid in self.row_ids} - {None}
         self.eval_set, self.row_oracle = set(self.eval_ids), row_oracle
-        self.filter.set_objects(self.row_balls)
+        self.filter.set_objects(*self._filter_objects(seg))
         ks = np.concatenate([b.kappa * np.minimum(self.graph.nodes[nid].std, b.s_max) for nid, b in self.row_balls.items()] or [np.zeros(0)])
         self.ball_log.append({"segment": index, "epoch": self.epoch + 1, "n_admitted": len(self.row_ids), "m_r": self.graph.m_r, "m_d": self.policy.m_d,
                               "kappa": {nid: b.kappa for nid, b in self.row_balls.items()}, "s_max": {nid: b.s_max for nid, b in self.row_balls.items()},
@@ -356,6 +356,15 @@ class SafetyFilterEnv(gym.Wrapper):
                               "kappa_s_bar_quantiles_m": dict(zip(["min", "50%", "90%", "max"], np.percentile(ks, [0, 50, 90, 100]).round(5).tolist())) if len(ks) else None})
         self.epoch += 1
         self.segment_start_tick = self.tick
+
+    def _filter_objects(self, seg) -> tuple[dict, dict | None]:
+        """The filter's objects for a segment (id -> balls) and per-object sphere masks (None: every sphere)."""
+        return self.row_balls, None
+
+    @staticmethod
+    def _node_id(filter_object_id: str) -> str:
+        """The map node behind a filter object id ("<node>~<part>" ids are parts of one node's points)."""
+        return filter_object_id.split("~", 1)[0]
 
     def _exempt_oracle_ids(self, seg) -> set[str]:
         """The oracle nodes exempt on the evaluation side: those of the segment's filter-side exemptions."""
@@ -441,8 +450,8 @@ class SafetyFilterEnv(gym.Wrapper):
         """One tick's receipt, its ground truth and the robot's joints."""
         rec.update(segment=self.segment_index, epoch=self.epoch, action=[float(v) for v in action])
         if rec["h_min_pair"] is not None:
-            rec["h_min_category"] = self.graph.nodes[rec["h_min_pair"][2]].category
-            rec["h_min_oracle_id"] = f"O:{self.bridge.to_oracle(rec['h_min_pair'][2])}"
+            rec["h_min_category"] = self.graph.nodes[self._node_id(rec["h_min_pair"][2])].category
+            rec["h_min_oracle_id"] = f"O:{self.bridge.to_oracle(self._node_id(rec['h_min_pair'][2]))}"
         self.receipts.append(rec)
         self.hold_streak = self.hold_streak + 1 if rec["outcome"] == "hold" else 0
         truth = self._truth(bar.centres, bar.radii)
@@ -514,12 +523,12 @@ class SafetyFilterEnv(gym.Wrapper):
             streaks.append({"ticks": [first["tick"], run[-1]["tick"]], "segment": first["segment"], "length": len(run), "max_slack": max(r["max_slack"] for r in run),
                             "h_min_at_start": first["h_min"], "h_min_pair_at_start": first["h_min_pair"], "starts_at_episode_start": first["tick"] == 0,
                             "rows_with_slack_at_start": len(first["slack_rows"]), "rows_with_negative_h_at_start": sum(row["h"] < 0 for row in first["slack_rows"]),
-                            "pairs": [[link, obj, self.graph.nodes[obj].category, n] for (link, obj), n in sp.most_common(5)],
+                            "pairs": [[link, obj, self.graph.nodes[self._node_id(obj)].category, n] for (link, obj), n in sp.most_common(5)],
                             "true_clearance_at_start": self.ground_truth[first["tick"]]["clearance"]})
             k = e + 1
         return {"relaxed_ticks": len(relaxed), "hold_ticks": sum(r["outcome"] == "hold" for r in rec), "ticks": len(rec),
                 "max_slack": max((r["max_slack"] for r in relaxed), default=0.0),
-                "pairs_most_often": [[link, obj, self.graph.nodes[obj].category, n] for (link, obj), n in pairs.most_common(10)],
+                "pairs_most_often": [[link, obj, self.graph.nodes[self._node_id(obj)].category, n] for (link, obj), n in pairs.most_common(10)],
                 "qp_status": dict(Counter(r["qp_status"] for r in rec)), "streaks": streaks}
 
     def disturbance(self) -> dict:
