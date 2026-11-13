@@ -38,3 +38,16 @@ close_cabinet_s0 without clutter; 0.8 and 1.0 get stuck on fixtures in two scene
 (tuning_r3_L0.4.csv): Proposed still stalls while driving in 4 of 5 scenes and ends on the island slab in the fifth.
 For information only, Proposed with L = 0.6, 0.8, 1.0 (tuning_r3_L0.6/0.8/1.0.csv): stalls in all 5 scenes at every
 value. No value removes the deadlocks; the look-ahead stays 0.2 m and stage 0b stops for Kasra.
+
+## A4 (2026-11-13, after round 3; Kasra's decisions for round 4)
+
+- The shared path is planned on the full-pass map that contains the clutter (planner unchanged: base footprint band,
+  inflation = base half-width 0.25 m + 0.10 m = 0.35 m around every ball centre plus its radius); clutter placed by
+  the same seeded rule (relative to the path planned without clutter). One plan per scene and voxel size, never
+  replanned; look-ahead 0.2 m. The planner found a path in all five tuning scenes.
+- Base spheres: a complete cover of the base box (64 spheres, radius 0.106 m, 4.6 cm past the faces; largest gap
+  2.9 mm on 5 mm samples; 136 robot spheres in all).
+- Voxel check on counter_to_sink_s0 at 2.5 and 2 cm (voxel_check.json): the slab edge stays mostly outside the
+  balls. Round 4 at 5 cm and at 2 cm (tuning_r4_v0.05.csv, tuning_r4_v0.02.csv).
+- The prior classifier now accepts more than 100 candidates (checked in chunks; labels unchanged): the 10 m path of
+  open_drawer_s1 had more candidates in its corridor (first attempt failed twice, logged in repeats.csv).

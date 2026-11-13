@@ -52,9 +52,10 @@ ap.add_argument("--map", default="full", choices=("full", "look"))
 ap.add_argument("--policy", default="{}", help='JSON FilterPolicy overrides (tuning rounds only), e.g. {"alpha": 3.0}')
 ap.add_argument("--video", choices=("auto", "on", "off"), default="auto", help="auto: on for counted Nominal and Proposed runs on the full-pass map (section 9)")
 ap.add_argument("--lookahead", type=float, default=FOLLOWER_LOOKAHEAD_M, help="base follower look-ahead [m] (tuning rounds only)")
+ap.add_argument("--scenes-root", default=None, help="a directory of scene variants (tuning only), e.g. outputs/eval_debug/scenes_v0.025")
 ap.add_argument("--tuning", default=None, help="a tuning round (stage 0b, not counted), e.g. r2")
 args = ap.parse_args()
-scene_dir = SCENES_DIR / args.scene
+scene_dir = (Path(args.scenes_root) if args.scenes_root else SCENES_DIR) / args.scene
 scene = json.loads((scene_dir / "scene.json").read_text())
 out = (DEBUG_DIR / "tuning" / args.tuning if args.tuning else EVAL_DIR / "runs") / args.scene / f"{args.method}_{args.map}.json"
 if out.exists():

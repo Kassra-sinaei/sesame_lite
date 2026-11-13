@@ -187,7 +187,13 @@ class CategoryPriorClassifier:
         parent_graph_snapshot_id: str,
     ) -> PruningClassification:
         _validated_goal(task_goal)
-        items = _validated_candidates(candidates)
+        items = tuple(candidates)
+        # MAXIMUM_CANDIDATES is the LLM classifiers' reply-size limit; this rule labels every object on its own, so a long
+        # path's corridor with more candidates is checked in chunks (same labels)
+        for k in range(0, max(len(items), 1), MAXIMUM_CANDIDATES):
+            _validated_candidates(items[k:k + MAXIMUM_CANDIDATES])
+        if len({item.stable_id for item in items}) != len(items):
+            raise ValueError("Candidate stable IDs must be unique.")
         passable = {v.strip().lower() for v in self.passable_categories}
         irrelevant = {v.strip().lower() for v in self.irrelevant_categories}
         labels = {}

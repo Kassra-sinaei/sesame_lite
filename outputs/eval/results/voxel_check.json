@@ -1,0 +1,10 @@
+{
+ "scene": "counter_to_sink_s0 (tuning scene), full-pass map; the island counter top is a 3 cm slab overhanging free space",
+ "edge": "front face of the slab where arm link 1 touched (60 samples along the face)",
+ "by_voxel_m": {
+  "0.05":  {"face_inside_balls": 0.02, "nearest_map_point_to_contact_m": 0.088, "rho_median_m": 0.063, "rho_p95_m": 0.107, "m_r_m": 0.0499, "capped_share": 0.114, "map_points": 38942, "mapping_s": 100, "peak_rss_gb": 3.6},
+  "0.025": {"face_inside_balls": 0.13, "nearest_map_point_to_contact_m": 0.070, "rho_median_m": 0.040, "rho_p95_m": 0.058, "m_r_m": 0.0259, "capped_share": 0.255, "map_points": 139660, "mapping_s": 355, "peak_rss_gb": 12.6},
+  "0.02":  {"face_inside_balls": 0.17, "nearest_map_point_to_contact_m": 0.031, "rho_median_m": 0.037, "rho_p95_m": 0.051, "m_r_m": 0.0231, "capped_share": 0.324, "map_points": 294540, "mapping_s": 1292, "peak_rss_gb": 16.3}
+ },
+ "note": "mapping time and memory of one process; the 2 cm maps of the other four tuning scenes took 1534-2965 s and 18.8-22.7 GB with four built at once; 5 cm reference from the scene's own map (about 100 s)"
+}

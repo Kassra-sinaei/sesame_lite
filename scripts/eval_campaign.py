@@ -26,6 +26,7 @@ ap.add_argument("runs")
 ap.add_argument("--tuning", default=None, help="as scripts/eval_run.py (a tuning round, not counted)")
 ap.add_argument("--policy", default="{}", help="as scripts/eval_run.py (tuning rounds only)")
 ap.add_argument("--lookahead", default=None, help="as scripts/eval_run.py (tuning rounds only)")
+ap.add_argument("--scenes-root", default=None, help="as scripts/eval_run.py (tuning rounds only)")
 ap.add_argument("-j", type=int, default=3, help="processes at once (pi0.5 needs ~11 GB of GPU memory each)")
 args = ap.parse_args()
 runs = [line.split() for line in Path(args.runs).read_text().splitlines() if line.strip() and not line.startswith("#")]
@@ -54,7 +55,7 @@ def run_one(run) -> str:
     for attempt in (1, 2):
         t0 = time.time()
         with open(log, "a") as f:
-            code = subprocess.call([sys.executable, "-s", str(REPO / "scripts" / "eval_run.py"), "--scene", scene, "--method", method, "--map", kind, "--policy", args.policy, *(["--tuning", args.tuning] if args.tuning else []), *(["--lookahead", args.lookahead] if args.lookahead else [])],
+            code = subprocess.call([sys.executable, "-s", str(REPO / "scripts" / "eval_run.py"), "--scene", scene, "--method", method, "--map", kind, "--policy", args.policy, *(["--tuning", args.tuning] if args.tuning else []), *(["--lookahead", args.lookahead] if args.lookahead else []), *(["--scenes-root", args.scenes_root] if args.scenes_root else [])],
                                    stdout=f, stderr=subprocess.STDOUT, cwd=REPO, env={**os.environ, "MUJOCO_GL": "egl"})
         if result_path(*run).exists():
             return f"finished      {' '.join(run)}  ({time.time() - t0:.0f} s)"

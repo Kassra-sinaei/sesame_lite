@@ -1,0 +1,11 @@
+scene,method,outcome,success,ticks,ticks_driving,ticks_manipulation,contact_ticks,touched,true_clearance_min_m,relaxed_ticks,hold_ticks,finger_patch_contact_ticks,tracking_error_max,unmapped_task_objects,binding_last_100_ticks
+close_cabinet_s0,nominal,unsafe_fail,False,1200,403,797,680,O:O(41) O:O(50) O:O(60),-0.0521,0,0,0,2.9645,,
+close_cabinet_s0,proposed,safe_fail,False,1200,407,793,0,,0.045,0,0,0,0.2719,,gripper0_right_rightfinger -> hinge cabinet O(153) (12); mobilebase0_wheeled_base -> stove O(144) (6); robot0_right_hand -> hinge cabinet O(153) (5)
+close_fridge_s4,nominal,success,True,918,226,692,0,,0.0421,0,0,0,0.7265,,
+close_fridge_s4,proposed,success,True,633,229,404,0,,0.0836,0,0,0,0.6114,,
+counter_to_sink_s0,nominal,stalled,False,160,160,0,94,O:O(24),0.0054,0,0,0,0.2556,,
+counter_to_sink_s0,proposed,stalled,False,161,161,0,91,O:O(24),0.0035,0,0,0,0.1614,,robot0_link1 -> counter O(5) (100)
+open_drawer_s1,nominal,unsafe_fail,False,1200,622,578,30,O:O(23),-0.0307,0,0,0,1.0485,,
+open_drawer_s1,proposed,safe_fail,False,1200,644,556,0,,0.007,0,0,0,0.2948,,robot0_right_hand -> counter O(87) (12); gripper0_right_rightfinger -> counter O(87) (1)
+sink_to_counter_s0,nominal,success_but_unsafe,True,964,580,384,0,,-0.0122,0,0,0,0.0892,object,
+sink_to_counter_s0,proposed,safe_fail,False,1200,596,604,0,,0.0015,0,0,0,0.191,object,robot0_link5 -> counter O(45) (20); robot0_right_hand -> counter O(45) (1)
