@@ -1,0 +1,20 @@
+# stage 2: Nominal on the other 19 scenes
+open_drawer_s1 nominal full
+open_drawer_s4 nominal full
+open_drawer_s5 nominal full
+close_fridge_s4 nominal full
+close_fridge_s7 nominal full
+close_fridge_s9 nominal full
+close_fridge_s10 nominal full
+close_cabinet_s0 nominal full
+close_cabinet_s3 nominal full
+close_cabinet_s6 nominal full
+close_cabinet_s7 nominal full
+sink_to_counter_s0 nominal full
+sink_to_counter_s3 nominal full
+sink_to_counter_s8 nominal full
+sink_to_counter_s9 nominal full
+counter_to_sink_s0 nominal full
+counter_to_sink_s7 nominal full
+counter_to_sink_s8 nominal full
+counter_to_sink_s11 nominal full

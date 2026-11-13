@@ -701,8 +701,9 @@ class SmolVLAPolicy:
 class MissionRunner:
     """Run the plan's segments: follower for NAVIGATION, SmolVLA for VLA; new epoch at every segment switch."""
 
-    def __init__(self, env: SafetyFilterEnv, *, vla: SmolVLAPolicy | None, on_frame=None):
-        self.env, self.vla, self.on_frame = env, vla, on_frame
+    def __init__(self, env: SafetyFilterEnv, *, vla: SmolVLAPolicy | None, on_frame=None, lookahead: float = 0.2):
+        """``lookahead``: the navigation follower's look-ahead distance along the path [m]."""
+        self.env, self.vla, self.on_frame, self.lookahead = env, vla, on_frame, lookahead
 
     def run(self, obs) -> tuple[bool, bool]:
         env = self.env
@@ -710,7 +711,7 @@ class MissionRunner:
         max_steps = env.env._max_episode_steps
         while env.tick < max_steps:
             seg = env.segment
-            follower = NavFollower(seg.path_polyline_xy, seg.goal_yaw, policy=env.policy) if seg.kind == NAVIGATION else None
+            follower = NavFollower(seg.path_polyline_xy, seg.goal_yaw, policy=env.policy, lookahead=self.lookahead) if seg.kind == NAVIGATION else None
             if seg.kind == VLA and self.vla is None:
                 raise RuntimeError("a VLA segment needs the smolvla nominal")
             if self.vla is not None:
@@ -718,7 +719,7 @@ class MissionRunner:
             seg_steps, epoch = 0, env.epoch
             while env.tick < max_steps and (seg.max_steps is None or seg_steps < seg.max_steps):
                 if follower is not None and env.epoch != epoch:  # replanned path: fresh follower on it
-                    follower, epoch = NavFollower(seg.path_polyline_xy, seg.goal_yaw, policy=env.policy), env.epoch
+                    follower, epoch = NavFollower(seg.path_polyline_xy, seg.goal_yaw, policy=env.policy, lookahead=self.lookahead), env.epoch
                 if follower is not None:
                     action = follower(env.robot_pose()[0][:2], env.base_yaw(), env.base_theta())
                 else:

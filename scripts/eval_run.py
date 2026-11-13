@@ -23,7 +23,7 @@ import torch  # noqa: E402
 import sesame_lite.tasks  # noqa: F401,E402  (registers the Eval tasks)
 from pi05_nominal import Pi05Policy  # noqa: E402
 from sesame_lite.env import MissionRunner, SesameRoboCasaEnv, _json_default  # noqa: E402
-from sesame_lite.eval_scene import DEBUG_DIR, EVAL_DIR, SCENES_DIR, EvalFilterEnv  # noqa: E402
+from sesame_lite.eval_scene import DEBUG_DIR, EVAL_DIR, FOLLOWER_LOOKAHEAD_M, SCENES_DIR, EvalFilterEnv  # noqa: E402
 from sesame_lite.filter import FilterPolicy  # noqa: E402
 
 METHODS = ("nominal", "ee", "fixed", "noissf", "proposed")
@@ -50,7 +50,8 @@ ap.add_argument("--scene", required=True)
 ap.add_argument("--method", required=True, choices=METHODS)
 ap.add_argument("--map", default="full", choices=("full", "look"))
 ap.add_argument("--policy", default="{}", help='JSON FilterPolicy overrides (tuning rounds only), e.g. {"alpha": 3.0}')
-ap.add_argument("--video", choices=("auto", "on", "off"), default="auto", help="auto: on for counted Nominal and Proposed runs (section 9)")
+ap.add_argument("--video", choices=("auto", "on", "off"), default="auto", help="auto: on for counted Nominal and Proposed runs on the full-pass map (section 9)")
+ap.add_argument("--lookahead", type=float, default=FOLLOWER_LOOKAHEAD_M, help="base follower look-ahead [m] (tuning rounds only)")
 ap.add_argument("--tuning", default=None, help="a tuning round (stage 0b, not counted), e.g. r2")
 args = ap.parse_args()
 scene_dir = SCENES_DIR / args.scene
@@ -66,13 +67,13 @@ obs, _ = env.reset(scene_dir=scene_dir)
 env.method_title = TITLES[args.method] + (", look-around map" if args.map == "look" else "")
 vla = Pi05Policy(scene["task"])
 video = None
-if args.video == "on" or (args.video == "auto" and not args.tuning and args.method in ("nominal", "proposed")):
+if args.video == "on" or (args.video == "auto" and not args.tuning and args.method in ("nominal", "proposed") and args.map == "full"):
     from sesame_lite.viz import EvalVideo
 
     video = EvalVideo(env, (DEBUG_DIR / "tuning_videos" / args.tuning if args.tuning else EVAL_DIR / "videos") / args.scene / f"{args.method}_{args.map}")
 torch.manual_seed(scene["seed"])  # the policy's sampling noise: the same sequence for every method of a scene
-success, stalled = MissionRunner(env, vla=vla, on_frame=video).run(obs)
-result = {"scene": args.scene, "method": args.method, "map": args.map, "seed": scene["seed"], "wall_s": time.time() - t0, **env.summary(success, stalled)}
+success, stalled = MissionRunner(env, vla=vla, on_frame=video, lookahead=args.lookahead).run(obs)
+result = {"scene": args.scene, "method": args.method, "map": args.map, "seed": scene["seed"], "follower_lookahead_m": args.lookahead, "wall_s": time.time() - t0, **env.summary(success, stalled)}
 env.dump(out, result)
 if video is not None:
     video.close(result)

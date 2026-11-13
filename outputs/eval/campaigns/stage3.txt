@@ -1,0 +1,20 @@
+# stage 3: Proposed on the other 19 scenes
+open_drawer_s1 proposed full
+open_drawer_s4 proposed full
+open_drawer_s5 proposed full
+close_fridge_s4 proposed full
+close_fridge_s7 proposed full
+close_fridge_s9 proposed full
+close_fridge_s10 proposed full
+close_cabinet_s0 proposed full
+close_cabinet_s3 proposed full
+close_cabinet_s6 proposed full
+close_cabinet_s7 proposed full
+sink_to_counter_s0 proposed full
+sink_to_counter_s3 proposed full
+sink_to_counter_s8 proposed full
+sink_to_counter_s9 proposed full
+counter_to_sink_s0 proposed full
+counter_to_sink_s7 proposed full
+counter_to_sink_s8 proposed full
+counter_to_sink_s11 proposed full

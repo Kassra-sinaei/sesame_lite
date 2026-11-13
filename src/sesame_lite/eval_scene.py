@@ -76,6 +76,8 @@ RULE = dict(start_min_clearance_m=0.6, min_path_m=2.5, floor_fractions=(0.3, 0.5
 # the object (filter side: the object's map node centre; truth: the object's position when manipulation starts), during
 # the manipulation segment (Kasra, 2026-11-13); every method is scored the same way
 FINGER_PATCH_RADIUS_M = 0.15
+# the nominal base follower's look-ahead along the path (pure pursuit; same for every method); stage 0b round 3 sets it
+FOLLOWER_LOOKAHEAD_M = 0.2
 FINGER_LINKS = ("gripper0_right_leftfinger", "gripper0_right_rightfinger")
 BASE_JOINTS = ("mobilebase0_joint_mobile_forward", "mobilebase0_joint_mobile_side", "mobilebase0_joint_mobile_yaw")
 FLOOR_CLUTTER = ("clutter_floor_0", "clutter_floor_1", "clutter_floor_2")

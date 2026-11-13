@@ -1,0 +1,6 @@
+scene,method,outcome,success,ticks,ticks_driving,ticks_manipulation,contact_ticks,touched,true_clearance_min_m,relaxed_ticks,hold_ticks,finger_patch_contact_ticks,tracking_error_max,unmapped_task_objects,binding_last_100_ticks
+close_cabinet_s0,proposed,stalled,False,303,303,0,0,,0.0444,0,0,0,0.2925,,mobilebase0_wheeled_base -> basket O(11) (73); mobilebase0_wheeled_base -> box O(16) (27)
+close_fridge_s4,proposed,stalled,False,179,179,0,52,O:O(81),0.0264,0,0,0,0.0928,,mobilebase0_wheeled_base -> basket O(63) (93); mobilebase0_wheeled_base -> flour bag O(75) (7)
+counter_to_sink_s0,proposed,stalled,False,145,145,0,91,O:O(24),-0.0048,0,0,0,0.1366,,robot0_link1 -> counter O(5) (100)
+open_drawer_s1,proposed,stalled,False,179,179,0,0,,0.046,0,0,0,0.2603,,mobilebase0_wheeled_base -> basket O(26) (93); mobilebase0_wheeled_base -> flour bag O(24) (7)
+sink_to_counter_s0,proposed,stalled,False,251,251,0,0,,0.0348,0,0,0,0.1128,object,mobilebase0_wheeled_base -> basket O(23) (63); mobilebase0_wheeled_base -> box O(16) (37)
