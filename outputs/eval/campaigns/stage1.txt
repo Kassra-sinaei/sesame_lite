@@ -1,4 +1,4 @@
-# stage 1 (EVAL_SPEC 7): every method once on the full-pass map of open_drawer_s3
+# stage1 (EVAL_SPEC.md 7): every method once on the full-pass map of open_drawer_s3
 open_drawer_s3 nominal full
 open_drawer_s3 ee full
 open_drawer_s3 fixed full

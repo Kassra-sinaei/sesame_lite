@@ -95,7 +95,9 @@ class WorldRenderer:
         mujoco.mjv_connector(g, mujoco.mjtGeom.mjGEOM_LINE, width, np.asarray(a, float), np.asarray(b, float))
         scn.ngeom += 1
 
-    def render(self, *, robot_only: bool = False, overlay: bool = True) -> np.ndarray:
+    def render(self, *, robot_only: bool = False, overlay: bool = True, sphere_rgba=None, tint_bodies=frozenset(), tint=(0.1, 0.75, 1.0)) -> np.ndarray:
+        """``sphere_rgba``: one colour per robot sphere instead of the barrier colours; ``tint_bodies``: bodies drawn in
+        ``tint`` (the pair-pruning video)."""
         env = self.env
         self.renderer.update_scene(self.data, camera=self.cam, scene_option=self.opt)
         scn = self.renderer.scene
@@ -106,12 +108,14 @@ class WorldRenderer:
                     gg.rgba[3] = 0.0
                 elif gg.objid in self.wall_geoms:
                     gg.rgba[3] = 0.12
+                elif int(self.model.geom_bodyid[gg.objid]) in tint_bodies:
+                    gg.rgba[:3] = 0.35 * np.asarray(gg.rgba[:3]) + 0.65 * np.asarray(tint)
         if not overlay:
             return self.renderer.render().copy()
         bar = env.last_barrier
         h_sphere = bar.h.min(axis=1) if bar.h.shape[1] else np.full(len(bar.radii), np.inf)
-        for c, r, h in zip(bar.centres, bar.radii, h_sphere):
-            self._add(mujoco.mjtGeom.mjGEOM_SPHERE, [r, 0, 0], c, np.eye(3), h_colour(h, 0.35 if robot_only else 0.55))
+        for k, (c, r, h) in enumerate(zip(bar.centres, bar.radii, h_sphere)):
+            self._add(mujoco.mjtGeom.mjGEOM_SPHERE, [r, 0, 0], c, np.eye(3), h_colour(h, 0.35 if robot_only else 0.55) if sphere_rgba is None else sphere_rgba[k])
         if robot_only:
             return self.renderer.render().copy()
         flt = env.filter
@@ -219,14 +223,15 @@ class EpisodeRecorder:
 class EvalVideo:
     """EVAL_SPEC.md, section 9: 1920x1080 at the simulation rate (20 Hz) from an outside camera that follows the robot,
     once clean and once with the overlay (spheres coloured by h, the balls near the robot, the closest pair, smallest h
-    and true clearance), and the robot's cameras as the policy saw them. Frames are encoded as the run goes."""
+    and true clearance), the robot's cameras as the policy saw them, and a close-up of the hand with the overlay.
+    Frames are encoded as the run goes."""
 
     def __init__(self, env, stem: Path, *, width: int = 1920, height: int = 1080, fps: int = 20):
         import imageio.v2 as imageio
 
         stem.parent.mkdir(parents=True, exist_ok=True)
         self.world = WorldRenderer(env, width=width, height=height, view="three_quarter")
-        self.paths = {k: stem.parent / f"{stem.name}_{k}.mp4" for k in ("clean", "overlay", "robot_camera")}
+        self.paths = {k: stem.parent / f"{stem.name}_{k}.mp4" for k in ("clean", "overlay", "robot_camera", "hand")}
         self.writers = {k: imageio.get_writer(str(p), fps=fps, codec="libx264", quality=8, macro_block_size=1) for k, p in self.paths.items()}
         self.font, self.small = _font(40), _font(30)
         self.yaw = None
@@ -239,10 +244,33 @@ class EvalVideo:
         cam.lookat[:] = [base[0] + 0.35 * np.cos(self.yaw), base[1] + 0.35 * np.sin(self.yaw), 0.8]  # mid-height of the robot
         cam.distance, cam.azimuth, cam.elevation = 3.0, np.degrees(self.yaw) + 30.0, -28.0
 
+    PAIR_DROPPED, PAIR_ACTIVE, PAIR_TINT = (0.85, 0.2, 0.85, 0.6), (0.2, 0.75, 0.3, 0.45), (0.1, 0.75, 1.0)
+
+    def _pair_style(self, env) -> dict:
+        """Pair-level pruning runs: every sphere coloured by whether one of its pairs is dropped now, and the objects of
+        the dropped pairs tinted (their MuJoCo bodies)."""
+        if not getattr(env, "pair_pruning", False):
+            return {}
+        dropped = env.dropped_sphere_mask()
+        bodies = set().union(set(), *(env.oracle_lookup.bodies[o] for o in env.pair_groups)) if dropped.any() else set()
+        return {"sphere_rgba": [self.PAIR_DROPPED if d else self.PAIR_ACTIVE for d in dropped], "tint_bodies": bodies, "tint": self.PAIR_TINT}
+
+    def _legend(self, img: Image.Image) -> None:
+        draw = ImageDraw.Draw(img, "RGBA")
+        x, y = img.width - 640, img.height - 150
+        draw.rectangle([x - 16, y - 12, img.width - 8, img.height - 8], fill=(0, 0, 0, 150))
+        for k, (rgb, text) in enumerate(((self.PAIR_DROPPED[:3], "sphere with a pair dropped by the pruning"), (self.PAIR_ACTIVE[:3], "sphere with all pairs active"),
+                                         (self.PAIR_TINT, "object of a dropped pair (tinted)"))):
+            draw.rectangle([x, y + 44 * k + 6, x + 28, y + 44 * k + 34], fill=tuple(int(255 * v) for v in rgb))
+            draw.text((x + 42, y + 44 * k), text, font=self.small, fill=(255, 255, 255))
+
     def __call__(self, env) -> None:
         self._follow(env)
         self.writers["clean"].append_data(self.world.render(overlay=False))
-        frame = Image.fromarray(self.world.render())
+        style = self._pair_style(env)
+        frame = Image.fromarray(self.world.render(**style))
+        if style:
+            self._legend(frame)
         rec, gt = env.receipts[-1], env.ground_truth[-1]
         draw = ImageDraw.Draw(frame, "RGBA")
         h, ht = rec["h_min"], gt["clearance"]
@@ -250,11 +278,22 @@ class EvalVideo:
         line2 = f"smallest h {'-' if h is None else f'{100 * h:+5.1f} cm'}   true clearance {'> 1 m' if ht is None else f'{100 * ht:+5.1f} cm'}"
         if gt["touched"]:
             line2 += "   CONTACT"
+        if gt.get("exempt_pair_contacts"):
+            line2 += "   contact on a dropped pair"
         draw.rectangle([0, 0, frame.width, 100], fill=(0, 0, 0, 160))
         draw.text((20, 8), line1, font=self.font, fill=(255, 255, 255))
         draw.text((20, 56), line2, font=self.small, fill=(255, 95, 95) if gt["touched"] or (ht is not None and ht < 0) else (255, 255, 255))
         self.last = np.asarray(frame)
         self.writers["overlay"].append_data(self.last)
+        # close-up of the hand with the same overlay (its spheres, the balls near it, the closest pair)
+        eef, yaw = env.robot_pose()[2], env.base_yaw()
+        cam = self.world.cam
+        cam.lookat[:], cam.distance, cam.azimuth, cam.elevation = eef, 0.9, np.degrees(yaw) + 60.0, -30.0
+        hand = Image.fromarray(self.world.render(**style))
+        ImageDraw.Draw(hand, "RGBA").text((20, 8), line2, font=self.small, fill=(255, 255, 255))
+        if style:
+            self._legend(hand)
+        self.writers["hand"].append_data(np.asarray(hand))
         obs = getattr(env.env, "last_raw_obs", None) or {}
         cams = [np.ascontiguousarray(obs[k]) for k in sorted(obs) if k.startswith("video.")]
         if cams:

@@ -1,0 +1,19 @@
+# pick-and-place screening (EVAL_SPEC.md 4; candidates of 2026-11-15): pi0.5 without the filter, the first 6 buildable seeds from 1000 per candidate
+counter_to_cabinet_s1003 nominal full
+counter_to_cabinet_s1004 nominal full
+counter_to_cabinet_s1005 nominal full
+counter_to_cabinet_s1008 nominal full
+counter_to_cabinet_s1009 nominal full
+counter_to_cabinet_s1010 nominal full
+counter_to_stove_s1001 nominal full
+counter_to_stove_s1002 nominal full
+counter_to_stove_s1003 nominal full
+counter_to_stove_s1005 nominal full
+counter_to_stove_s1006 nominal full
+counter_to_stove_s1007 nominal full
+stove_to_counter_s1000 nominal full
+stove_to_counter_s1001 nominal full
+stove_to_counter_s1002 nominal full
+stove_to_counter_s1003 nominal full
+stove_to_counter_s1005 nominal full
+stove_to_counter_s1006 nominal full

@@ -27,8 +27,11 @@ Rules (fixed before any run; every number is in ``RULE``):
    >= 0.8 m, the first thing a downward ray from 1.3 m hits; centre and the four footprint
    corners hit a counter top within 1 cm of its height), touches nothing, keeps >= 8 cm (x-y) from every other free object and
    >= 12 cm from the other counter clutter.
-   If no counter top lies within 0.9 m of the standoff at all (the fridges: Kasra, 2026-11-13), the scene has no
-   counter objects; the three are stored 5 m under the floor (gravity compensated, out of every view).
+   As many of the three as fit are placed (fridges and stoves have little or no counter top within reach; Kasra,
+   2026-11-13 and 2026-11-15); the others are stored 5 m under the floor (gravity compensated, out of every view).
+5. Path: the clutter is placed along the path planned on map_plan (rules 2-3); the shared path of the scene is then
+   planned once on map_full, which contains the clutter (Kasra, 2026-11-13), with the two-layer planner (base; rigid
+   column and shoulder), and is never replanned.
 A seed whose scene cannot be built by these rules is skipped (logged), and the next seed is taken.
 """
 
@@ -36,6 +39,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+import hashlib
+import os
 from pathlib import Path
 
 import mujoco
@@ -62,11 +67,13 @@ INSTRUCTIONS = {
     "counter_to_cabinet": dict(task="EvalPickPlaceCounterToCabinet", roles={"cabinet": {"fixture_ref": "cab"}, "object": {"object": "obj"}},
                                exempt=["cabinet", "object"], target="object", patch="object"),
     "counter_to_sink": dict(task="EvalPickPlaceCounterToSink", roles={"sink": {"fixture_ref": "sink"}, "object": {"object": "obj"}}, exempt=["sink", "object"], target="object", patch="object"),
+    "stove_to_counter": dict(task="EvalPickPlaceStoveToCounter", roles={"stove": {"fixture_ref": "stove"}, "object": {"object": "obj"}, "pan": {"object": "obj_container"},
+                                                                     "container": {"object": "container"}}, exempt=["stove", "object", "pan", "container"], target="object", patch="object"),
     "counter_to_stove": dict(task="EvalPickPlaceCounterToStove", roles={"stove": {"fixture_ref": "stove"}, "object": {"object": "obj"}, "container": {"object": "container"},
                                                                      "plate": {"object": "obj_container"}}, exempt=["stove", "object", "container", "plate"], target="object", patch="object"),
 }
 ENV_KWARGS = {"split": "pretrain", "clutter_mode": 1}
-HORIZON = 1200
+HORIZON = 1800  # ticks, every method (Kasra, 2026-11-16; the finished filtered tuning runs took 588-1582 ticks)
 
 RULE = dict(start_min_clearance_m=0.6, min_path_m=2.5, floor_fractions=(0.3, 0.5, 0.7), floor_sides=(1, -1, 1), clip_m=0.03, pass_extra_m=0.12,
             keep_out_m=0.6, fraction_offsets=(0.0, 0.05, -0.05, 0.1, -0.1, 0.15, -0.15), counter_ring_m=(0.25, 0.6), counter_reach_m=0.9,
@@ -79,6 +86,24 @@ FINGER_PATCH_RADIUS_M = 0.15
 # the nominal base follower's look-ahead along the path (pure pursuit; same for every method); stage 0b round 3 sets it
 FOLLOWER_LOOKAHEAD_M = 0.2
 FINGER_LINKS = ("gripper0_right_leftfinger", "gripper0_right_rightfinger")
+# pair-level pruning (Kasra, 2026-11-13, round 5): robot groups, and the groups whose pairs with the task's objects are
+# dropped from the QP during manipulation (whole object); the base and the arm (links 0-6) keep every pair
+ROBOT_GROUPS = ("base", "arm", "hand", "fingers")
+PAIR_DROP_GROUPS = ("hand", "fingers")
+
+
+def robot_group(name: str) -> str:
+    """The robot group of a body or sphere link: base (mobilebase0_*), arm (robot0_link0-6), fingers (finger bodies),
+    hand (the hand, the gripper's base and the wrist flange, link 7, which sits on top of the hand; Kasra, 2026-11-15)."""
+    if name.startswith("mobilebase0"):
+        return "base"
+    if "finger" in name:
+        return "fingers"
+    if name == "robot0_link7":
+        return "hand"
+    if name.startswith("robot0_link") or name == "robot0_base":
+        return "arm"
+    return "hand"
 BASE_JOINTS = ("mobilebase0_joint_mobile_forward", "mobilebase0_joint_mobile_side", "mobilebase0_joint_mobile_yaw")
 FLOOR_CLUTTER = ("clutter_floor_0", "clutter_floor_1", "clutter_floor_2")
 COUNTER_CLUTTER = ("clutter_counter_0", "clutter_counter_1", "clutter_counter_2")
@@ -262,7 +287,7 @@ class _Prep:
 
     # ---- counter objects
 
-    def place_counter(self, target_xy: np.ndarray, standoff_xy: np.ndarray, others: list[tuple[np.ndarray, np.ndarray]]) -> list[dict]:
+    def place_counter(self, target_xy: np.ndarray, standoff_xy: np.ndarray, others: list[tuple[np.ndarray, np.ndarray]]) -> tuple[list[dict], list[str]]:
         m, d = self.model, self.data
         r0, r1 = RULE["counter_ring_m"]
         g = RULE["counter_grid_m"]
@@ -271,7 +296,7 @@ class _Prep:
         dist = np.linalg.norm(grid - target_xy, axis=1)
         grid = grid[(dist >= r0) & (dist <= r1) & (np.linalg.norm(grid - standoff_xy, axis=1) <= RULE["counter_reach_m"])]
         grid = grid[self.rng.permutation(len(grid))]
-        placed, boxes = [], []
+        placed, boxes, unplaced = [], [], []
         for name in COUNTER_CLUTTER:
             c = self.clutter[name]
             turn = float(self.rng.uniform(-np.pi, np.pi))
@@ -297,10 +322,11 @@ class _Prep:
                         "distance_to_target_m": round(float(np.linalg.norm(xy - target_xy)), 4), "distance_to_standoff_m": round(float(np.linalg.norm(xy - standoff_xy)), 4)}
                 boxes.append((lo, hi))
                 break
-            if info is None:
-                raise ScenePrepError(f"no counter spot for {name} (placed {len(placed)} of 3)")
+            if info is None:  # no spot for this one: it is left out of the scene (stored under the floor by the caller)
+                unplaced.append(name)
+                continue
             placed.append(info)
-        return placed
+        return placed, unplaced
 
     def counter_within_reach(self, standoff_xy) -> bool:
         """Is any counter top (as ``_counter_top``) within the reach radius of the standoff (2 cm grid)?"""
@@ -368,7 +394,7 @@ def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Pa
         start = np.asarray(places[k][:2], dtype=float)
         tried += 1
         try:
-            path = plan_base_path(graph, balls, start, standoff_xy, inflation_m=env.inflation_m, z_band=env.z_band)
+            path = plan_base_path(graph, balls, start, standoff_xy, inflation_m=env.inflation_m, z_band=env.z_band, upper=env.upper)
         except NoPathError:
             continue
         length = float(np.sum(np.linalg.norm(np.diff(path, axis=0), axis=1)))
@@ -397,14 +423,13 @@ def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Pa
     for name in task_objects:
         pts = _corners(m, d, _collision_geoms(m, _subtree_body_ids(m, rs.obj_body_id[name])))
         others.append((pts.min(axis=0), pts.max(axis=0)))
-    if prep.counter_within_reach(standoff_xy):
-        counter, stored = prep.place_counter(target_xy, standoff_xy, others), []
-    else:  # no counter top within reach (Kasra, 2026-11-13): no counter objects; they are stored under the floor
-        counter, stored = [], list(COUNTER_CLUTTER)
-        for k, name in enumerate(stored):
-            c = prep.clutter[name]
-            place_body(m, d, c["body"], c["gids"], standoff_xy + np.array([0.5 * k, 0.0]), 0.0, prep.floor_z - RULE["store_below_floor_m"])
-        hold_still(m, stored_bodies(rs, stored))
+    # as many of the three counter objects as fit by the rule (Kasra, 2026-11-13 and 2026-11-15: fridges and stoves have
+    # little or no counter top within reach); the others are stored under the floor
+    counter, stored = prep.place_counter(target_xy, standoff_xy, others) if prep.counter_within_reach(standoff_xy) else ([], list(COUNTER_CLUTTER))
+    for k, name in enumerate(stored):
+        c = prep.clutter[name]
+        place_body(m, d, c["body"], c["gids"], standoff_xy + np.array([0.5 * k, 0.0]), 0.0, prep.floor_z - RULE["store_below_floor_m"])
+    hold_still(m, stored_bodies(rs, stored))
     mujoco.mj_forward(m, d)
     if prep.robot_touches():
         raise ScenePrepError("the robot touches something at the start of the final scene")
@@ -413,14 +438,23 @@ def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Pa
     oracle, lookup_f = capture_scene_graph(rs)
     build_map(rs, oracle, lookup_f, out_dir / "map_full", seed=seed)
     build_map(rs, oracle, lookup_f, out_dir / "map_look", seed=seed, look_from=chosen["start"])
+    # the shared path: planned once on the full-pass map that contains the clutter (Kasra, 2026-11-13), two layers
+    bp, R, _ = env.robot_pose()
+    graph_f, _, _, balls_f = _load(out_dir / "map_full", oracle, lookup_f, (bp, float(np.arctan2(R[1, 0], R[0, 0]))), env.policy)
+    try:
+        path = plan_base_path(graph_f, balls_f, chosen["start"], standoff_xy, inflation_m=env.inflation_m, z_band=env.z_band, upper=env.upper)
+    except NoPathError as exc:
+        raise ScenePrepError(f"no path on the map with the clutter: {exc}") from exc
     jid = [mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, j) for j in BASE_JOINTS]
     scene = {
         "scene": scene_name(instruction, seed), "instruction": instruction, "task": spec["task"], "seed": seed, "env_kwargs": ENV_KWARGS, "horizon": HORIZON,
         "language": env.env.task_description, "kitchen": {"layout": kitchen[0], "style": kitchen[1]},
         "task_pose": {"xy": goal_xy.round(4).tolist(), "yaw": round(goal_yaw, 5)},
         "standoff": {"xy": np.round(standoff_xy, 4).tolist(), "yaw": round(goal_yaw, 5), "offset_m": offset},
-        "start": {"xy": chosen["start"].round(4).tolist(), "yaw": round(chosen["yaw"], 5), "places_tried": tried, "path_length_m": round(chosen["length"], 3)},
-        "plan": {"roles": spec["roles"], "nav_target": nav_oracle_name, "path_xy": np.round(chosen["path"], 4).tolist(), "exempt": spec["exempt"], "target": spec["target"],
+        "start": {"xy": chosen["start"].round(4).tolist(), "yaw": round(chosen["yaw"], 5), "places_tried": tried,
+                  "path_length_m": round(float(np.sum(np.linalg.norm(np.diff(path, axis=0), axis=1))), 3), "path_length_without_clutter_m": round(chosen["length"], 3)},
+        "plan": {"roles": spec["roles"], "nav_target": nav_oracle_name, "path_xy": np.round(path, 4).tolist(), "path_xy_without_clutter": np.round(chosen["path"], 4).tolist(),
+                 "exempt": spec["exempt"], "target": spec["target"],
                  "patch": spec.get("patch")},
         "base_qpos": [float(d.qpos[m.jnt_qposadr[j]]) for j in jid],
         "clutter_qpos": {name: d.qpos[_free_adr(m, c["body"])[0]:_free_adr(m, c["body"])[0] + 7].tolist() for name, c in prep.clutter.items()},
@@ -464,23 +498,66 @@ def hold_still(model, bodies) -> None:
 # --------------------------------------------------------------------------- the evaluation environment
 
 
+class SharedDecisions:
+    """The language model's decisions of one scene and map kind (object labels per segment, dropped pairs), asked once
+    and stored in the scene folder (model_<map>.json), so that every method of the scene runs with the same ones."""
+
+    def __init__(self, path: Path, classifier=None):
+        self.path, self.classifier = path, classifier
+
+    def load(self) -> dict:
+        return json.loads(self.path.read_text()) if self.path.exists() else {}
+
+    def store(self, key: str, value: dict) -> None:
+        data = self.load() | {key: value}
+        tmp = self.path.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(data, indent=1))
+        tmp.replace(self.path)
+
+    def must_ask(self, key: str) -> None:
+        """A store marked complete (scripts/eval_decide.py asked everything before the campaign) must answer every
+        request: a miss then means the run differs from the decided scene, and it stops instead of asking again."""
+        if self.load().get("complete"):
+            raise RuntimeError(f"{self.path}: no stored decision for {key}, although the store is complete")
+
+    def classify(self, *, candidates, task_goal: str, parent_graph_snapshot_id: str):
+        """The wrapped object classifier, answered from the store when this request was asked before."""
+        from sesame_lite.agents.pruning_classifier import PruningClassification, request_payload
+
+        key = "labels:" + hashlib.sha256(request_payload(tuple(candidates), task_goal).encode()).hexdigest()[:16]
+        hit = self.load().get(key)
+        if hit is None:
+            self.must_ask(key)
+            res = self.classifier.classify(candidates=candidates, task_goal=task_goal, parent_graph_snapshot_id=parent_graph_snapshot_id)
+            hit = {"labels": dict(res.labels), "classifier_version": res.classifier_version, "fallback_used": res.fallback_used, "latency_s": res.latency_s, "detail": res.detail}
+            self.store(key, hit)
+        return PruningClassification(labels=hit["labels"], parent_graph_snapshot_id=parent_graph_snapshot_id, classifier_version=hit["classifier_version"],
+                                     fallback_used=hit["fallback_used"], latency_s=hit["latency_s"], detail=hit["detail"])
+
+
 class EvalFilterEnv(SafetyFilterEnv):
     """SafetyFilterEnv on a prepared scene: the shared plan (never replanned) and one of its two maps.
 
     Exemptions come from the plan's roles: on the filter side the role's map nodes (a role the map has no node for
     is logged as an unmapped task object), on the evaluation side the role's oracle node (always)."""
 
-    def __init__(self, env, *, map_kind: str = "full", **kwargs):
+    def __init__(self, env, *, map_kind: str = "full", pair_pruning: str | None = None, **kwargs):
+        """``pair_pruning``: "rule" or "model" (see ``_pairs_setup``): pairs of robot groups and objects are dropped
+        instead of exempting whole objects and instead of the finger patch."""
         super().__init__(env, max_replans=0, **kwargs)
         if map_kind not in ("full", "look"):
             raise ValueError(map_kind)
-        self.map_kind = map_kind
+        self.map_kind, self.pair_pruning = map_kind, pair_pruning
 
     def reset(self, seed=None, *, scene_dir: Path, **kwargs):
         scene = json.loads((Path(scene_dir) / "scene.json").read_text())
         obs, info = self.env.reset(seed=scene["seed"])
         apply_scene(self, scene)
         self.scene, self.seed, self.mission, self.n_capture = scene, scene["seed"], scene["instruction"], 0
+        if self.pair_pruning == "model" and not isinstance(self._classifier, SharedDecisions):
+            self._classifier = self.shared = SharedDecisions(Path(scene_dir) / f"model_{self.map_kind}.json", self._classifier)
+            if self.shared.classifier is None:  # the filter is off (Nominal): its scoring still uses the scene's pairs
+                self._classifier = None
         self.oracle_graph, self.oracle_lookup = capture_scene_graph(self.rs)
         cache = Path(scene_dir) / f"map_{self.map_kind}"
         for sid in (self.oracle_graph.snapshot_id, json.loads((cache / "meta.json").read_text())["oracle_snapshot_id"]):
@@ -492,6 +569,7 @@ class EvalFilterEnv(SafetyFilterEnv):
         self.plan_kwargs = dict(inflation_m=self.inflation_m)
         self.segments = self._eval_segments()
         self._patch_setup()
+        self._pairs_setup()
         return self._finish_reset(obs, info)
 
     def _eval_segments(self) -> list[Segment]:
@@ -502,10 +580,10 @@ class EvalFilterEnv(SafetyFilterEnv):
             node = resolve_role(spec, self.rs, self.lookup)
             if node is None:
                 self.unmapped_roles.append(role)
-            else:
+            elif not self.pair_pruning:  # pair-level pruning: no object is exempt as a whole
                 filter_exempt += self.bridge.instance_nodes(node)
             oracle_node = resolve_role(spec, self.rs, self.oracle_lookup)
-            if oracle_node is not None:
+            if oracle_node is not None and not self.pair_pruning:
                 self.exempt_by_segment[1].add(oracle_node)
         lang = self.env.task_description
         return [Segment(kind=NAVIGATION, goal_text=lang, path_polyline_xy=np.asarray(plan["path_xy"]), goal_yaw=sc["standoff"]["yaw"], goal_offset_m=sc["standoff"]["offset_m"] or 0.0,
@@ -521,7 +599,7 @@ class EvalFilterEnv(SafetyFilterEnv):
         """The support (RoboCasa's placement surface of the picked object) unless it is exempt anyway (the sink)."""
         self.patch, self.patch_target, self.patch_contact = None, None, False
         role = self.plan.get("patch")
-        if not role:
+        if not role or self.pair_pruning:
             return
         spec = self.plan["roles"][role]
         oracle_obj = resolve_role(spec, self.rs, self.oracle_lookup)
@@ -535,6 +613,84 @@ class EvalFilterEnv(SafetyFilterEnv):
         model = _raw_model(self.rs.sim)
         self.finger_bodies = set().union(*(_subtree_body_ids(model, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, b)) for b in FINGER_LINKS))
 
+    # ---- pair-level pruning (round 5)
+
+    def _pairs_setup(self) -> None:
+        """Pairs dropped from the QP during manipulation (robot group, object), for the whole object. ``"rule"``: a fixed
+        rule, the hand and the fingers may touch the task's objects (the plan's roles: target, container, the sink of a
+        sink task) and the support the picked object stands on. ``"model"``: Qwen chooses them once per manipulation
+        step from the instruction, that step's object list and the four groups (``_ask_model``). Every other pair stays."""
+        self.pair_groups, self.pair_map_groups, self.dropped_pairs, self.pair_reply = {}, {}, [], None
+        # task objects of the plan that the map has no node for: the filter has no constraint against them and the model
+        # cannot name them, so a gripper contact with one is scored as a contact on an exempt pair (Kasra, 2026-11-15)
+        self.unmapped_task_oracle = set()
+        if self.pair_pruning:
+            for role in self.plan["exempt"]:
+                oid = resolve_role(self.plan["roles"][role], self.rs, self.oracle_lookup)
+                if oid is not None and not self.bridge.hydra_of.get(oid):
+                    self.unmapped_task_oracle.add(oid)
+        if self.pair_pruning != "rule":
+            return
+        objects = [(role, self.plan["roles"][role]) for role in self.plan["exempt"]]
+        if self.plan.get("patch"):  # the picked object's support (RoboCasa's placement surface)
+            obj = resolve_role(self.plan["roles"][self.plan["patch"]], self.rs, self.oracle_lookup)
+            if obj in self.oracle_lookup.support:
+                objects.append(("support", {"oracle": self.oracle_lookup.support[obj]}))
+        for role, spec in objects:
+            oid = spec.get("oracle") or resolve_role(spec, self.rs, self.oracle_lookup)
+            if oid is not None:
+                for g in PAIR_DROP_GROUPS:
+                    self._drop_pair(g, oid, self.bridge.hydra_of.get(oid, []), role)
+
+    def _drop_pair(self, group: str, oracle_id: str | None, nodes, role: str) -> None:
+        names = {v: k for k, v in self.oracle_lookup.node_of.items()}
+        if oracle_id is not None:
+            self.pair_groups.setdefault(oracle_id, set()).add(group)
+        for nid in nodes:
+            self.pair_map_groups.setdefault(nid, set()).add(group)
+        self.dropped_pairs.append({"segment": 1, "group": group, "role": role, "object": f"O:{oracle_id}" if oracle_id else None,
+                                   "name": names.get(oracle_id, "").split(":", 1)[-1], "map_nodes": list(nodes),
+                                   "category": self.graph.nodes[nodes[0]].category if nodes else (self.oracle_graph.nodes[oracle_id].category if oracle_id else None)})
+
+    def _ask_model(self) -> None:
+        """Once per manipulation step: the model's pairs over the step's candidate objects (stage 1 of the pruning)."""
+        from sesame_lite.agents.pruning_classifier import PruningCandidate, QwenPairClassifier
+
+        cands = [PruningCandidate(stable_id=nid, name=self.graph.nodes[nid].classifier_name(), kind=self.graph.nodes[nid].kind) for nid in self.bundle.candidate_ids]
+        # where each object is, from the map, relative to the plan's standoff pose (the same for every method of the scene)
+        xy, yaw = np.asarray(self.scene["standoff"]["xy"]), self.scene["standoff"]["yaw"]
+        where = {}
+        for c in cands:
+            lo, hi = self.graph.nodes[c.stable_id].aabb()
+            d = np.clip(xy, lo[:2], hi[:2]) - xy  # to the nearest point of the object's box
+            centre = (lo[:2] + hi[:2]) / 2 - xy
+            bearing = np.degrees(_wrap(np.arctan2(centre[1], centre[0]) - yaw))
+            direction = "ahead" if abs(bearing) <= 30 else "behind" if abs(bearing) >= 150 else ("left" if bearing > 0 else "right") if abs(bearing) >= 60 else ("ahead-left" if bearing > 0 else "ahead-right")
+            where[c.stable_id] = {"distance_m": round(float(np.linalg.norm(d)), 1), "direction": direction, "height_m": round(float((lo[2] + hi[2]) / 2), 1)}
+        reply = self.shared.load().get("pairs")
+        if reply is None:  # asked once per scene and map kind; every method of the scene uses this reply
+            self.shared.must_ask("pairs")
+            res = QwenPairClassifier().classify_pairs(candidates=cands, task_goal=self.segment.goal_text, where=where)
+            reply = {"latency_s": round(res.latency_s, 3), "error": res.error, "raw_reply": res.raw_reply, "n_objects": len(cands),
+                     "pairs_returned": [list(p) for p in res.pairs], "pairs_not_applied": [list(p) for p in res.pairs if p[0] not in PAIR_DROP_GROUPS]}
+            self.shared.store("pairs", reply)
+        # the model chooses the objects; the robot part is fixed (Kasra, 2026-11-15): an object the model names in a pair
+        # with the hand or the fingers loses its pairs with the whole gripper (fingers, hand, wrist flange). Pairs the
+        # model returns with the base or the arm are not applied (they keep every pair) and are logged.
+        self.pair_reply = reply
+        chosen = list(dict.fromkeys(nid for group, nid in reply["pairs_returned"] if group in PAIR_DROP_GROUPS and nid in self.graph.nodes))
+        for nid in chosen:
+            for group in PAIR_DROP_GROUPS:
+                self._drop_pair(group, self.bridge.to_oracle(nid), self.bridge.instance_nodes(nid), "model")
+
+    def _pairs_on(self) -> bool:
+        return bool(self.pair_pruning) and self.segment.kind == VLA
+
+    def dropped_sphere_mask(self) -> np.ndarray:
+        """Spheres with at least one pair dropped by the pair pruning now (for the video)."""
+        groups = set().union(set(), *self.pair_map_groups.values()) if self._pairs_on() else set()
+        return np.array([robot_group(link) in groups for link in self.robot.links])
+
     def _patch_on(self) -> bool:
         return self.patch is not None and self.patch_target is not None and self.segment.kind == VLA
 
@@ -547,6 +703,13 @@ class EvalFilterEnv(SafetyFilterEnv):
         """The support's points outside the patch become a separate object with rows for the finger spheres only; the
         full support keeps the rows of every other sphere."""
         balls, masks = super()._filter_objects(seg)
+        if self.pair_pruning:
+            if seg.kind != VLA:
+                return balls, masks
+            if self.pair_pruning == "model" and self.pair_reply is None:
+                self._ask_model()
+            groups = [robot_group(link) for link in self.robot.links]
+            return balls, {nid: np.array([g not in gs for g in groups]) for nid, gs in self.pair_map_groups.items() if nid in balls}
         p = self.patch
         if seg.kind != VLA or p is None or p["map_object"] is None:
             return balls, masks
@@ -565,27 +728,56 @@ class EvalFilterEnv(SafetyFilterEnv):
         return balls, masks
 
     def _touched_oracle_ids(self) -> set[str]:
-        """As the base class, but a finger contact with the support inside the patch is not a collision."""
-        if not self._patch_on():
-            return super()._touched_oracle_ids()
+        """Every robot-object contact, logged with its robot group (``self.tick_contacts``) and whether it is on an
+        exempt pair (``self.tick_exempt_contacts``): an exempt object (patch method: the plan's roles), a finger contact
+        with the support inside the patch, or a pair dropped by the pair pruning. Returns the objects of the contacts
+        that are not exempt."""
         model, data = _raw_model(self.rs.sim), _raw_data(self.rs.sim)
-        sup, r = self.patch["oracle_support"], self.patch["radius_m"]
-        out = set()
+        if not hasattr(self, "body_group"):
+            self.body_group = {b: robot_group(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, b) or "") for b in self.robot_bodies}
+        vla = self.segment.kind == VLA
+        out, contacts, exempt = set(), set(), set()
         for i in range(data.ncon):
             c = data.contact[i]
             b1, b2 = int(model.geom_bodyid[c.geom1]), int(model.geom_bodyid[c.geom2])
             for a, b in ((b1, b2), (b2, b1)):
                 if a in self.robot_bodies and b in self.oracle_id_of_body:
-                    oid = self.oracle_id_of_body[b]
-                    if oid == sup and a in self.finger_bodies and np.linalg.norm(c.pos[:2] - self.patch_target) <= r:
+                    oid, grp = self.oracle_id_of_body[b], self.body_group[a]
+                    contacts.add((grp, f"O:{oid}"))
+                    if vla and self.pair_pruning and (grp in self.pair_groups.get(oid, ()) or (oid in self.unmapped_task_oracle and grp in PAIR_DROP_GROUPS)):
+                        exempt.add((grp, f"O:{oid}"))
+                        continue
+                    if vla and oid in self.exempt_oracle_ids:
+                        exempt.add((grp, f"O:{oid}"))
+                        continue
+                    if self._patch_on() and oid == self.patch["oracle_support"] and a in self.finger_bodies and np.linalg.norm(c.pos[:2] - self.patch_target) <= self.patch["radius_m"]:
                         self.patch_contact = True
+                        exempt.add((grp, f"O:{oid}"))
                         continue
                     out.add(oid)
+        self.tick_contacts, self.tick_exempt_contacts = contacts, exempt
         return out
 
     def _truth(self, centres: np.ndarray, radii: np.ndarray) -> dict:
-        """As the base class, but finger spheres over the patch are left out of the clearance to the support."""
+        """As the base class, but finger spheres over the patch are left out of the clearance to the support; with pair
+        pruning, the hand and finger spheres are left out of the clearance to the objects of their dropped pairs."""
         out = super()._truth(centres, radii)
+        if self._pairs_on() and self.pair_groups:
+            data, groups = _raw_data(self.rs.sim), [robot_group(link) for link in self.robot.links]
+            for key, owners in (("clearance", self.eval_set), ("clearance_rows", self.row_oracle)):
+                pair = owners & set(self.pair_groups)
+                if not pair:
+                    continue
+                parts = [self.true_geometry.clearance(data, centres, radii, owners - pair)]
+                for gs in {frozenset(self.pair_groups[o]) for o in pair}:  # objects with the same dropped groups together
+                    keep = np.flatnonzero([g not in gs for g in groups])
+                    v, x = self.true_geometry.clearance(data, centres[keep], radii[keep], {o for o in pair if frozenset(self.pair_groups[o]) == gs})
+                    parts.append((v, None if x is None else [int(keep[x[0]]), x[1]]))
+                best, pr = min(((v, x) for v, x in parts if v is not None), default=(None, None), key=lambda x: x[0])
+                out[key] = best
+                if key == "clearance":
+                    out["pair"] = None if pr is None else [self.robot.links[pr[0]], f"O:{pr[1]}"]
+            return out
         if not self._patch_on():
             return out
         finger = np.array([link in FINGER_LINKS for link in self.robot.links])
@@ -612,6 +804,8 @@ class EvalFilterEnv(SafetyFilterEnv):
         g = self.ground_truth[-1]
         g["touched_not_admitted"] = [o for o in g["touched"] if o[2:] not in self.row_oracle]
         g["finger_patch_contact"] = self.patch_contact
+        g["contacts"] = sorted(f"{grp}|{o}" for grp, o in self.tick_contacts)  # every contact, exempt pairs included
+        g["exempt_pair_contacts"] = sorted(f"{grp}|{o}" for grp, o in self.tick_exempt_contacts)
 
     def summary(self, success: bool, stalled: bool) -> dict:
         out = super().summary(success, stalled)
@@ -626,5 +820,9 @@ class EvalFilterEnv(SafetyFilterEnv):
             support_of_object=f"O:{self.oracle_lookup.support[obj]}" if obj in self.oracle_lookup.support else None,
             finger_patch={k: v for k, v in (self.patch or {}).items() if k != "object_body"} or None,
             finger_patch_contact_ticks=sum(bool(g.get("finger_patch_contact")) for g in gt),
+            pair_pruning=self.pair_pruning, dropped_pairs=self.dropped_pairs, pair_model_reply=self.pair_reply,
+            contact_ticks_all=sum(bool(g["contacts"]) for g in gt), exempt_pair_contact_ticks=sum(bool(g["exempt_pair_contacts"]) for g in gt),
+            contacts_by_pair={k: sum(k in g["contacts"] for g in gt) for k in sorted({k for g in gt for k in g["contacts"]})},
+            exempt_contacts_by_pair={k: sum(k in g["exempt_pair_contacts"] for g in gt) for k in sorted({k for g in gt for k in g["exempt_pair_contacts"]})},
             snapshot_ok=self.oracle_graph.snapshot_id == self.scene["snapshot_id"])
         return out

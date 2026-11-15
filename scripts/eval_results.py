@@ -11,7 +11,7 @@ import json
 
 import numpy as np
 
-from sesame_lite.eval_scene import EVAL_DIR, FINGER_PATCH_RADIUS_M, FOLLOWER_LOOKAHEAD_M, RULE
+from sesame_lite.eval_scene import EVAL_DIR, FOLLOWER_LOOKAHEAD_M, RULE
 from sesame_lite.filter import CONTROL_DT_S
 from sesame_lite.tasks import EVAL_COUNTER_CATEGORIES, EVAL_FLOOR_CATEGORIES
 
@@ -37,8 +37,10 @@ for path in sorted((EVAL_DIR / "runs").glob("*/*.json")):
     runs.append({
         "scene": r["scene"], "instruction": r["instruction"], "method": r["method"], "map_kind": r["map"], "seed": r["seed"], "snapshot_id": r["snapshot_id"],
         "used_for_tuning": tuning[r["scene"]], "outcome": r["outcome"], "success": r["success"], "collision_free": r["collision_free"], "safe_success": r["safe_success"],
-        "contact_ticks": r["contact_ticks"], "touched_objects": " ".join(r["contact_nodes"]), "contacts_not_admitted": " ".join(r["contacts_not_admitted"]),
-        "finger_patch_contact_ticks": r["finger_patch_contact_ticks"], "smallest_true_clearance_m": r["true_clearance_min"], "steps": r["steps"],
+        "collision_ticks": r["contact_ticks"], "collided_with": " ".join(r["contact_nodes"]), "contacts_not_admitted": " ".join(r["contacts_not_admitted"]),
+        "collisions_by_robot_part": json.dumps({k: v - r["exempt_contacts_by_pair"].get(k, 0) for k, v in r["contacts_by_pair"].items() if v - r["exempt_contacts_by_pair"].get(k, 0) > 0}),
+        "exempt_pair_contact_ticks": r["exempt_pair_contact_ticks"], "dropped_pairs": " ".join(sorted({f"{p['group']}>{p['category']}" for p in r["dropped_pairs"]})),
+        "smallest_true_clearance_m": r["true_clearance_min"], "steps": r["steps"],
         "task_time_s": None if success_tick is None else success_tick * CONTROL_DT_S, "qp_time_ms_median": r["solve_ms_median"], "qp_time_ms_max": r["solve_ms_max"],
         "rows_mean": r["n_rows_qp_mean"], "rows_max": r["n_rows_qp_max"], "pairs_mean": r["n_pairs_mean"], "relaxed_ticks": r["feasibility"]["relaxed_ticks"],
         "relaxed_share": r["relaxed_share"], "tracking_disturbance_p99": (d.get("norm") or {}).get("99%"), "tracking_error_max": r["tracking_error_max"],
@@ -77,7 +79,7 @@ numbers = {
     "tracking_error_max": max((x["tracking_error_max"] for x in runs if x["tracking_error_max"] is not None), default=None),
     "rho_fixed_m": json.loads((R / "rho_fixed.json").read_text())["rho_fixed_m"],
     "clutter_rule": {"floor_categories": EVAL_FLOOR_CATEGORIES, "counter_categories": EVAL_COUNTER_CATEGORIES, "rule": RULE},
-    "finger_patch_radius_m": FINGER_PATCH_RADIUS_M, "follower_lookahead_m": FOLLOWER_LOOKAHEAD_M,
+    "exempt_robot_part": "fingers, hand and wrist flange (link 7)", "follower_lookahead_m": FOLLOWER_LOOKAHEAD_M,
     "test_scenes": [{k: t[k] for k in ("scene", "kitchen", "used_for_tuning")} for t in tests],
 }
 replay = R / "point_rows_replay.json"

@@ -25,6 +25,7 @@ from robocasa.environments.kitchen.atomic.kitchen_pick_place import (
     PickPlaceCounterToSink,
     PickPlaceCounterToStove,
     PickPlaceSinkToCounter,
+    PickPlaceStoveToCounter,
 )
 from robocasa.environments.kitchen.kitchen import FixtureType
 
@@ -127,4 +128,8 @@ class EvalPickPlaceCounterToSink(EvalClutter, PickPlaceCounterToSink):
 
 
 class EvalPickPlaceCounterToStove(EvalClutter, PickPlaceCounterToStove):
+    pass
+
+
+class EvalPickPlaceStoveToCounter(EvalClutter, PickPlaceStoveToCounter):
     pass

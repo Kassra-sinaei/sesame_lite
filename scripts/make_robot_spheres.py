@@ -6,8 +6,7 @@ Writes
   config/panda_omron.urdf          the kinematic tree of the MuJoCo model (bodies, joints, offsets), so cuRobo and MuJoCo agree
   config/panda_omron_spheres.yml   cuRobo robot config: arm and hand spheres from cuRobo's Franka set, carried from the Franka
                                    URDF's link frames into robosuite's body frames at the zero configuration (unchanged);
-                                   base box: a complete cover, 64 spheres of one radius on the box surface inset 6 cm
-                                   (4.6 cm past the faces; Kasra, 2026-11-13: the whole base, wheel housings included);
+                                   base box: two rings of spheres sticking out at most 2 cm past its side faces;
                                    column cylinders: a stack on each axis, 1 cm wider than the column (Kasra, 2026-11-11:
                                    few spheres and little bulge before completeness; MorphIt's fits bulged up to 8 cm, and
                                    more MorphIt spheres left up to 82 % of the box faces uncovered)
@@ -47,8 +46,9 @@ CUROBO = Path(__file__).resolve().parents[1] / "third_party" / "curobo" / "curob
 FRANKA_TO_ROBOSUITE = {**{f"panda_link{k}": f"robot0_link{k}" for k in range(8)}, "panda_hand": "robot0_right_hand",
                        "panda_leftfinger": "gripper0_right_leftfinger", "panda_rightfinger": "gripper0_right_rightfinger"}
 OUT = Path("outputs/viz")
-BOX_INSET_M = 0.06  # complete box cover: centres on the box surface inset by this (Kasra, 2026-11-13: whole base)
-BOX_GRID = (6, 4, 3)  # centres per axis on the inset surface: 64 spheres, radius 0.106 m, 4.6 cm past the faces
+BASE_BULGE_M = 0.02  # the base box's spheres stick out at most this far past its side faces
+BOX_SPHERE_RADIUS_M = 0.12
+BOX_RING_SPACING_M = 0.15
 COLUMN_BULGE_M = 0.01  # the column spheres stick out this far sideways
 
 
@@ -161,21 +161,22 @@ for flink, rlink in FRANKA_TO_ROBOSUITE.items():
                       for s in franka_cfg["collision_spheres"][flink] if s["radius"] > 0]
 
 
-def box_cover(half, inset=BOX_INSET_M, grid=BOX_GRID):
-    """A complete cover of a box (half extents a, b, c), in its own frame (Kasra, 2026-11-13: the whole base, wheel
-    housings included): sphere centres on a ``grid`` over the surface of the box inset by ``inset``, all of one radius,
-    the smallest that covers every point of the box surface (1 cm samples). The spheres stick out past the faces by
-    radius - inset."""
-    A, B, C = (np.asarray(half, float) - inset)
-    px, py, pz = np.linspace(-A, A, grid[0]), np.linspace(-B, B, grid[1]), np.linspace(-C, C, grid[2])
-    P = np.array([(x, y, z) for x in px for y in py for z in pz if abs(x) == A or abs(y) == B or abs(z) == C])
+def box_cover(half, bulge=BASE_BULGE_M, radius=BOX_SPHERE_RADIUS_M, spacing=BOX_RING_SPACING_M):
+    """A sparse ring cover of a box (half extents a, b, c), in its own frame: rings of spheres of ``radius`` at heights
+    that keep them inside the box's top and bottom, centred on the rectangle inset by radius - bulge from the side faces,
+    so no sphere sticks out past a side face by more than ``bulge``; one sphere every <= ``spacing`` along the rectangle,
+    corners included. Kasra (2026-11-11): few spheres and little bulge before completeness, so the box's corners and
+    top face are left partly uncovered."""
     a, b, c = half
-    s = 0.01
-    xs, ys, zs = np.arange(-a, a + 1e-9, s), np.arange(-b, b + 1e-9, s), np.arange(-c, c + 1e-9, s)
-    S = np.vstack([[(x, y, z) for x in xs for y in ys for z in (-c, c)], [(x, y, z) for x in xs for y in (-b, b) for z in zs],
-                   [(x, y, z) for x in (-a, a) for y in ys for z in zs]])
-    radius = float(cKDTree(P).query(S)[0].max())
-    return [(p, radius) for p in P]
+    inset = radius - bulge
+    ra, rb = a - inset, b - inset
+    zs = [0.0] if c <= radius else list(np.linspace(-(c - radius), c - radius, int(np.ceil((2 * (c - radius)) / spacing)) + 1))
+    corners = np.array([(ra, rb), (-ra, rb), (-ra, -rb), (ra, -rb), (ra, rb)])
+    ring = []
+    for p0, p1 in zip(corners[:-1], corners[1:]):
+        n = int(np.ceil(np.linalg.norm(p1 - p0) / spacing))
+        ring += [p0 + (p1 - p0) * k / n for k in range(n)]
+    return [(np.array([x, y, z]), radius) for z in zs for x, y in ring]
 
 
 def cylinder_cover(radius, half_height, bulge=COLUMN_BULGE_M):
@@ -199,8 +200,7 @@ for b in (bodies if REFIT else []):
         mujoco.mju_quat2Mat(R, m.geom_quat[g])
         R, p, s = R.reshape(3, 3), np.asarray(m.geom_pos[g], float), m.geom_size[g]
         if m.geom_type[g] == mujoco.mjtGeom.mjGEOM_BOX:
-            local = box_cover(s[:3])
-            rule = f"complete cover: {len(local)} spheres, radius {local[0][1]:.3f} m, centres {BOX_INSET_M} m inside the faces, grid {BOX_GRID}"
+            local, rule = box_cover(s[:3]), f"box rings: radius {BOX_SPHERE_RADIUS_M} m, bulge <= {BASE_BULGE_M} m, spacing <= {BOX_RING_SPACING_M} m"
         elif m.geom_type[g] == mujoco.mjtGeom.mjGEOM_CYLINDER:
             local, rule = cylinder_cover(s[0], s[1]), f"axis stack: radius + {COLUMN_BULGE_M} m"
         else:

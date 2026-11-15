@@ -2,7 +2,8 @@
 
     python -s scripts/eval_screening.py
 
-One row per screening scene (6 seeds per candidate; a seed whose scene could not be built is listed with its reason).
+One row per screening seed (per candidate the first 6 seeds from 1000 whose scene could be built; a seed whose scene could
+not be built is listed with its reason).
 Contacts are split by what was touched: the floor obstacles, the counter objects, the support surface of the picked
 object (its exemption is an open choice), and everything else.
 """
@@ -13,12 +14,15 @@ from collections import defaultdict
 
 from sesame_lite.eval_scene import EVAL_DIR, SCENES_DIR
 
-CANDIDATES = ("counter_to_cabinet", "counter_to_sink", "counter_to_stove")
-SEEDS = range(1000, 1006)
+CANDIDATES = ("counter_to_cabinet", "counter_to_stove", "stove_to_counter")
+N_SCENES = 6  # per candidate: seeds 1000, 1001, ... until this many scenes could be built (skipped seeds are listed)
 
 rows = []
 for cand in CANDIDATES:
-    for seed in SEEDS:
+    built = 0
+    for seed in range(1000, 1040):
+        if built == N_SCENES:
+            break
         scene = f"{cand}_s{seed}"
         row = {"candidate": cand, "seed": seed, "scene": scene}
         failed = SCENES_DIR / scene / "failed.json"
@@ -26,6 +30,9 @@ for cand in CANDIDATES:
             f = json.loads(failed.read_text())
             rows.append(row | {"kitchen": f"{f['kitchen']['layout']}-{f['kitchen']['style']}", "built": False, "note": f["reason"]})
             continue
+        if not (SCENES_DIR / scene / "scene.json").exists():
+            break
+        built += 1
         sc = json.loads((SCENES_DIR / scene / "scene.json").read_text())
         run = json.loads((EVAL_DIR / "runs" / scene / "nominal_full.json").read_text())
         res, gt = run["result"], run["ground_truth"]

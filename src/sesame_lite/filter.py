@@ -9,6 +9,10 @@ For every robot sphere i (centre s_i(q), radius r_i, Jacobian J_i; robot_spheres
     row:   grad_c h . u + grad_k h . q_dot_k - eps |grad_c h|^2 >= -alpha h                    eq. (8)
     QP:    u* = argmin |u - u_nom|^2  s.t. every row, u in U                                    eq. (9)
 
+The cost of eq. (9) is taken in normalized units (Kasra, 2026-11-15): each joint velocity as a fraction of its velocity
+limit (``SphereFilter.u_scale``: the base's steady velocity at its largest target, the arm's joint velocity limits), so
+that 1 m/s of the base and 1 rad/s of an arm joint are not counted as equal. The rows are unchanged.
+
 u = the joint velocities of the base (forward slide, side slide, yaw) and the seven arm joints (columns c);
 the torso and the two fingers are not commanded: they enter each row with their nominal velocity (columns k).
 U is a box: for the base the mean joint velocities its controller can reach within the tick from the current velocity
@@ -194,6 +198,8 @@ class SphereFilter:
         self.robot, self.policy, self.device = robot, policy, device
         self.row_spheres = row_spheres
         self.arm_limit = np.asarray(policy.arm_velocity_limits, float)
+        base = BaseModel()
+        self.u_scale = np.r_[base.steady(base.target_max), self.arm_limit]  # the velocity limits the cost is normalized by
         self.set_objects({})
 
     def set_objects(self, balls: dict, sphere_masks: dict | None = None) -> None:
@@ -281,7 +287,8 @@ class SphereFilter:
             u, outcome = u_nom, "passive"
         else:
             t1 = time.perf_counter()
-            u, flag = self._solve(np.eye(n), -u_nom, G, b, self.lb, self.ub)
+            w = 1.0 / self.u_scale**2  # |(u - u_nom) / u_scale|^2
+            u, flag = self._solve(np.diag(w), -w * u_nom, G, b, self.lb, self.ub)
             status = DAQP_EXIT.get(flag, f"exit_{flag}")
             if flag > 0 and np.all(G @ u - b <= 1e-6):
                 if np.linalg.norm(u - u_nom) <= 1e-9:
@@ -293,7 +300,7 @@ class SphereFilter:
             elif flag == -1:  # infeasible: the relaxed QP, one slack per row
                 m = G.shape[0]
                 A = np.hstack([G, -np.eye(m)])
-                x, flag2 = self._solve(np.diag(np.r_[np.ones(n), np.full(m, 1e-6)]), np.r_[-u_nom, np.full(m, p.relaxation_penalty)], A, b,
+                x, flag2 = self._solve(np.diag(np.r_[w, np.full(m, 1e-6)]), np.r_[-w * u_nom, np.full(m, p.relaxation_penalty)], A, b,
                                        np.r_[self.lb, np.zeros(m)], np.r_[self.ub, np.full(m, 1e30)])
                 status += "/relaxed_" + DAQP_EXIT.get(flag2, f"exit_{flag2}")
                 if flag2 > 0 and np.all(A @ x - b <= 1e-6):

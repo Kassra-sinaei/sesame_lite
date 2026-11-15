@@ -48,7 +48,7 @@ for path in sorted((Path(args.source) if args.source else EVAL_DIR / "runs").glo
     scene = path.parent.name
     sc = json.loads((SCENES_DIR / scene / "scene.json").read_text())
     base = SesameRoboCasaEnv(sc["task"], env_kwargs=dict(sc["env_kwargs"]), episode_length=sc["horizon"])
-    env = EvalFilterEnv(base)
+    env = EvalFilterEnv(base, pair_pruning="model", classifier="qwen")  # the scene's stored decisions
     env.reset(scene_dir=SCENES_DIR / scene)
     stats = {"composed": [], "per_point": []}
     for seg in sorted({g["segment"] for g in d["ground_truth"]}):

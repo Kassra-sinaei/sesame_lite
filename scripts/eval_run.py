@@ -26,22 +26,31 @@ from sesame_lite.env import MissionRunner, SesameRoboCasaEnv, _json_default  # n
 from sesame_lite.eval_scene import DEBUG_DIR, EVAL_DIR, FOLLOWER_LOOKAHEAD_M, SCENES_DIR, EvalFilterEnv  # noqa: E402
 from sesame_lite.filter import FilterPolicy  # noqa: E402
 
-METHODS = ("nominal", "ee", "fixed", "noissf", "proposed")
-TITLES = {"nominal": "Nominal", "ee": "End-effector filter", "fixed": "Fixed margin", "noissf": "Proposed without ISSf", "proposed": "Proposed"}
+METHODS = ("nominal", "ee", "fixed", "noissf", "proposed", "pairs_rule", "patch")
+TITLES = {"nominal": "Nominal", "ee": "End-effector filter", "fixed": "Fixed margin", "noissf": "Proposed without ISSf", "proposed": "Proposed",
+          "pairs_rule": "Rule pairs (reference)", "patch": "Finger patch (reference)"}
 
 
 def method_kwargs(method: str, overrides: dict) -> dict:
-    """The rows of Table II as options of the one filter (pruning on in every filtered row); ``overrides``: FilterPolicy
-    constants of a tuning round (stage 0b), the same for every filtered method."""
+    """The rows of Table II as options of the one filter; ``overrides``: FilterPolicy constants of a tuning round, the same
+    for every filtered method. In every row the language model (Qwen) prunes the objects and chooses the pairs to drop,
+    once per scene and map kind (shared by the methods); Nominal has no filter but is scored with the same pairs.
+    Two reference methods outside Table II: "pairs_rule" (category rule for the objects, fixed rule for the pairs) and
+    "patch" (whole task objects exempt, finger patch on the support; rounds 4-5)."""
     policy = FilterPolicy(**overrides)
+    model = {"pair_pruning": "model", "classifier": "qwen"}
     if method == "nominal":
-        return {"filter": False, "policy": policy}
+        return {"filter": False, "policy": policy, "pair_pruning": "model"}
     if method == "ee":
-        return {"rows_for": "hand", "policy": policy}
+        return {"rows_for": "hand", "policy": policy, **model}
     if method == "fixed":
-        return {"rho_fixed": json.loads((EVAL_DIR / "results" / "rho_fixed.json").read_text())["rho_fixed_m"], "policy": policy}
+        return {"rho_fixed": json.loads((EVAL_DIR / "results" / "rho_fixed.json").read_text())["rho_fixed_m"], "policy": policy, **model}
     if method == "noissf":
-        return {"policy": FilterPolicy(**{**overrides, "issf": False})}
+        return {"policy": FilterPolicy(**{**overrides, "issf": False}), **model}
+    if method == "proposed":
+        return {"policy": policy, **model}
+    if method == "pairs_rule":
+        return {"policy": policy, "pair_pruning": "rule"}
     return {"policy": policy}
 
 
@@ -53,6 +62,7 @@ ap.add_argument("--policy", default="{}", help='JSON FilterPolicy overrides (tun
 ap.add_argument("--video", choices=("auto", "on", "off"), default="auto", help="auto: on for counted Nominal and Proposed runs on the full-pass map (section 9)")
 ap.add_argument("--lookahead", type=float, default=FOLLOWER_LOOKAHEAD_M, help="base follower look-ahead [m] (tuning rounds only)")
 ap.add_argument("--scenes-root", default=None, help="a directory of scene variants (tuning only), e.g. outputs/eval_debug/scenes_v0.025")
+ap.add_argument("--horizon", type=int, default=None, help="episode length in ticks (default: the scene's)")
 ap.add_argument("--tuning", default=None, help="a tuning round (stage 0b, not counted), e.g. r2")
 args = ap.parse_args()
 scene_dir = (Path(args.scenes_root) if args.scenes_root else SCENES_DIR) / args.scene
@@ -62,7 +72,7 @@ if out.exists():
     print(f"RESULT exists {out}")
     sys.exit(0)
 t0 = time.time()
-base = SesameRoboCasaEnv(scene["task"], env_kwargs=dict(scene["env_kwargs"]), episode_length=scene["horizon"])
+base = SesameRoboCasaEnv(scene["task"], env_kwargs=dict(scene["env_kwargs"]), episode_length=args.horizon or scene["horizon"])
 env = EvalFilterEnv(base, map_kind=args.map, **method_kwargs(args.method, json.loads(args.policy)))
 obs, _ = env.reset(scene_dir=scene_dir)
 env.method_title = TITLES[args.method] + (", look-around map" if args.map == "look" else "")

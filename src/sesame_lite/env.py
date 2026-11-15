@@ -75,6 +75,8 @@ CLASSIFIERS = {
 STALL_HOLD_TICKS = 50
 STALL_PROGRESS_TICKS = 100
 STALL_SPEED_MPS = 0.02
+PLANNER_MARGIN_M = 0.10  # the path planner keeps this margin around the robot's footprint in each layer
+UPPER_BODIES = ("mobilebase0_fixed_support", "mobilebase0_support", "robot0_link0", "robot0_link1")  # column and shoulder: they do not bend
 HAND_LINKS = ("robot0_right_hand", "gripper0_right_leftfinger", "gripper0_right_rightfinger")  # the end-effector filter's spheres
 
 
@@ -260,8 +262,41 @@ class SafetyFilterEnv(gym.Wrapper):
         self.rect = np.array([[lo[0], lo[1]], [hi[0], lo[1]], [hi[0], hi[1]], [lo[0], hi[1]]])  # base footprint (planning)
         self.z_band = (float(pg[2] - size[2]), float(pg[2] + size[2]))
         self.base_radius = float(np.max(np.linalg.norm(self.rect, axis=1)))
-        self.inflation_m = float(hi[1] - lo[1]) / 2 + 0.10
+        self.inflation_m = float(hi[1] - lo[1]) / 2 + PLANNER_MARGIN_M
+        self.upper = self._upper_layer(bp)
         return bp
+
+    def _upper_layer(self, bp) -> tuple[tuple[float, float], float]:
+        """The planner's second layer: the rigid upper body (the column and the shoulder, UPPER_BODIES). Returns its
+        height band and its inflation: the largest horizontal distance of its collision geometry from the base centre
+        (link 1 turned about its joint axis to any angle) plus the planner's margin."""
+        model, data = _raw_model(self.rs.sim), _raw_data(self.rs.sim)
+        radius, z = 0.0, []
+        for name in UPPER_BODIES:
+            b = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+            pts = []
+            for g in np.flatnonzero(model.geom_bodyid == b):
+                if model.geom_group[g] != 0 or not (model.geom_contype[g] or model.geom_conaffinity[g]):
+                    continue
+                size, t = model.geom_size[g], model.geom_type[g]
+                if t == mujoco.mjtGeom.mjGEOM_CYLINDER:
+                    ang = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+                    local = np.array([(size[0] * np.cos(a), size[0] * np.sin(a), s * size[1]) for a in ang for s in (-1, 1)])
+                elif t == mujoco.mjtGeom.mjGEOM_MESH:
+                    mid = model.geom_dataid[g]
+                    local = model.mesh_vert[model.mesh_vertadr[mid]: model.mesh_vertadr[mid] + model.mesh_vertnum[mid]]
+                else:
+                    local = np.array([(sx, sy, sz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]) * size
+                pts.append(local @ data.geom_xmat[g].reshape(3, 3).T + data.geom_xpos[g])
+            pts = np.vstack(pts)
+            z += [pts[:, 2].min(), pts[:, 2].max()]
+            if name == "robot0_link1":  # turns about joint 1 (vertical): its reach from the joint axis, at any angle
+                axis = data.xanchor[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "robot0_joint1")][:2]
+                r = np.linalg.norm(axis - bp[:2]) + np.linalg.norm(pts[:, :2] - axis, axis=1).max()
+            else:
+                r = np.linalg.norm(pts[:, :2] - bp[:2], axis=1).max()
+            radius = max(radius, float(r))
+        return (float(min(z)), float(max(z))), radius + PLANNER_MARGIN_M
 
     def _finish_reset(self, obs, info):
         """Everything after the scene, the map and the segments are set: robot model, drive, filter, logs, segment 0."""
@@ -282,6 +317,7 @@ class SafetyFilterEnv(gym.Wrapper):
         self.receipts, self.ground_truth, self.bundles, self.ball_log, self.q_log, self.sphere_h_log = [], [], [], [], [], []
         self.tick, self.epoch, self.hold_streak, self.stop_reason = 0, 0, 0, None
         self.replans, self.segment_index = 0, -1
+        self.base_policy_v = np.zeros(3)  # the base's joint velocity under the policy's commands alone (starts at rest)
         self.begin_segment(0)
         self.start = self._start_check()
         return obs, info
@@ -431,7 +467,11 @@ class SafetyFilterEnv(gym.Wrapper):
         n_sub = int(round(CONTROL_DT_S / model.opt.timestep))
         u_arm, profile = self.drive.nominal(a[EE_POS_SLICE.start:EE_ROT_SLICE.stop], bool(a[MODE_INDEX] >= 0.5), n_sub)
         v0 = qd[:3]
-        u_nom = np.r_[self.base_model.nominal(a[BASE_SLICE], theta, v0), u_arm]
+        # the desired base input u_d (PDF eq. 9) is the base velocity under the policy's commands alone: velocity that the
+        # filter added in earlier ticks is not part of it (before 2026-11-15 it was the coasting of the measured velocity,
+        # so every correction of the base was carried over and built up about 1 / (1 - beta) times)
+        self.base_policy_v = self.base_model.nominal(a[BASE_SLICE], theta, self.base_policy_v)
+        u_nom = np.r_[self.base_policy_v, u_arm]
         torso = self.torso_ctrl  # robosuite's joint-position PD (kp 2000, critically damped) towards q + delta
         known = np.r_[pd_mean_velocity(-torso.scale_action(a[TORSO_INDEX:TORSO_INDEX + 1]), qd[3:4], np.sqrt(torso.kp[0]), CONTROL_DT_S), qd[11:13]]
         bounds = self.filter.box(q, self.base_model.bounds(v0), self.arm_q_lo, self.arm_q_hi, CONTROL_DT_S)
@@ -475,7 +515,7 @@ class SafetyFilterEnv(gym.Wrapper):
         from sesame_lite.planner import plan_base_path
 
         seg = self.segment
-        seg.path_polyline_xy = plan_base_path(self.graph, self.plan_balls, self.ground_truth[-1]["base_xy"], seg.path_polyline_xy[-1], inflation_m=self.plan_kwargs["inflation_m"], z_band=self.z_band)
+        seg.path_polyline_xy = plan_base_path(self.graph, self.plan_balls, self.ground_truth[-1]["base_xy"], seg.path_polyline_xy[-1], inflation_m=self.plan_kwargs["inflation_m"], z_band=self.z_band, upper=self.upper)
         self.replans += 1
         self.begin_segment(self.segment_index)
 

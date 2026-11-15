@@ -1,6 +1,18 @@
 {
- "rule": "instructions in the order open_drawer, close_fridge, close_cabinet, sink_to_counter, counter_to_sink; per instruction seeds 0, 1, 2, ...; a seed is taken if its kitchen is not in excluded_kitchens.json, not a screening kitchen, not taken by an earlier instruction or seed, and its scene could be built; the first 4 taken are the test scenes, the first of them the tuning scene",
+ "rule": "instructions in the order open_drawer, close_fridge, close_cabinet, sink_to_counter, counter_to_cabinet, counter_to_stove; per instruction seeds 0, 1, 2, ...; a seed is taken if its kitchen is not in excluded_kitchens.json, not a screening kitchen, not taken by an earlier instruction or seed, and its scene could be built; the first 4 taken are the test scenes; used_for_tuning marks every test scene whose kitchen a tuning round ran on",
  "test_scenes": [
+  {
+   "scene": "open_drawer_s0",
+   "instruction": "open_drawer",
+   "seed": 0,
+   "kitchen": [
+    53,
+    37
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": true
+  },
   {
    "scene": "open_drawer_s1",
    "instruction": "open_drawer",
@@ -38,12 +50,12 @@
    "used_for_tuning": false
   },
   {
-   "scene": "open_drawer_s5",
-   "instruction": "open_drawer",
-   "seed": 5,
+   "scene": "close_fridge_s3",
+   "instruction": "close_fridge",
+   "seed": 3,
    "kitchen": [
-    44,
-    37
+    51,
+    39
    ],
    "taken": true,
    "skipped_because": "",
@@ -62,52 +74,28 @@
    "used_for_tuning": true
   },
   {
-   "scene": "close_fridge_s7",
+   "scene": "close_fridge_s5",
    "instruction": "close_fridge",
-   "seed": 7,
+   "seed": 5,
    "kitchen": [
-    58,
+    44,
+    37
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
+   "scene": "close_fridge_s6",
+   "instruction": "close_fridge",
+   "seed": 6,
+   "kitchen": [
+    33,
     23
    ],
    "taken": true,
    "skipped_because": "",
    "used_for_tuning": false
-  },
-  {
-   "scene": "close_fridge_s9",
-   "instruction": "close_fridge",
-   "seed": 9,
-   "kitchen": [
-    43,
-    33
-   ],
-   "taken": true,
-   "skipped_because": "",
-   "used_for_tuning": false
-  },
-  {
-   "scene": "close_fridge_s10",
-   "instruction": "close_fridge",
-   "seed": 10,
-   "kitchen": [
-    49,
-    52
-   ],
-   "taken": true,
-   "skipped_because": "",
-   "used_for_tuning": false
-  },
-  {
-   "scene": "close_cabinet_s0",
-   "instruction": "close_cabinet",
-   "seed": 0,
-   "kitchen": [
-    53,
-    37
-   ],
-   "taken": true,
-   "skipped_because": "",
-   "used_for_tuning": true
   },
   {
    "scene": "close_cabinet_s3",
@@ -116,18 +104,6 @@
    "kitchen": [
     50,
     48
-   ],
-   "taken": true,
-   "skipped_because": "",
-   "used_for_tuning": false
-  },
-  {
-   "scene": "close_cabinet_s6",
-   "instruction": "close_cabinet",
-   "seed": 6,
-   "kitchen": [
-    33,
-    23
    ],
    "taken": true,
    "skipped_because": "",
@@ -146,6 +122,30 @@
    "used_for_tuning": false
   },
   {
+   "scene": "close_cabinet_s8",
+   "instruction": "close_cabinet",
+   "seed": 8,
+   "kitchen": [
+    59,
+    51
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
+   "scene": "close_cabinet_s9",
+   "instruction": "close_cabinet",
+   "seed": 9,
+   "kitchen": [
+    32,
+    14
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
    "scene": "sink_to_counter_s0",
    "instruction": "sink_to_counter",
    "seed": 0,
@@ -158,11 +158,83 @@
    "used_for_tuning": true
   },
   {
-   "scene": "sink_to_counter_s3",
+   "scene": "sink_to_counter_s7",
    "instruction": "sink_to_counter",
+   "seed": 7,
+   "kitchen": [
+    58,
+    23
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
+   "scene": "sink_to_counter_s11",
+   "instruction": "sink_to_counter",
+   "seed": 11,
+   "kitchen": [
+    17,
+    45
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
+   "scene": "sink_to_counter_s12",
+   "instruction": "sink_to_counter",
+   "seed": 12,
+   "kitchen": [
+    41,
+    42
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
+   "scene": "counter_to_cabinet_s3",
+   "instruction": "counter_to_cabinet",
    "seed": 3,
    "kitchen": [
-    51,
+    33,
+    58
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
+   "scene": "counter_to_cabinet_s10",
+   "instruction": "counter_to_cabinet",
+   "seed": 10,
+   "kitchen": [
+    49,
+    52
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
+   "scene": "counter_to_cabinet_s13",
+   "instruction": "counter_to_cabinet",
+   "seed": 13,
+   "kitchen": [
+    55,
+    50
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
+   "scene": "counter_to_cabinet_s15",
+   "instruction": "counter_to_cabinet",
+   "seed": 15,
+   "kitchen": [
+    57,
     39
    ],
    "taken": true,
@@ -170,72 +242,48 @@
    "used_for_tuning": false
   },
   {
-   "scene": "sink_to_counter_s8",
-   "instruction": "sink_to_counter",
-   "seed": 8,
-   "kitchen": [
-    46,
-    59
-   ],
-   "taken": true,
-   "skipped_because": "",
-   "used_for_tuning": false
-  },
-  {
-   "scene": "sink_to_counter_s9",
-   "instruction": "sink_to_counter",
-   "seed": 9,
-   "kitchen": [
-    32,
-    14
-   ],
-   "taken": true,
-   "skipped_because": "",
-   "used_for_tuning": false
-  },
-  {
-   "scene": "counter_to_sink_s0",
-   "instruction": "counter_to_sink",
+   "scene": "counter_to_stove_s0",
+   "instruction": "counter_to_stove",
    "seed": 0,
    "kitchen": [
-    55,
-    26
+    57,
+    15
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": true
+   "used_for_tuning": false
   },
   {
-   "scene": "counter_to_sink_s7",
-   "instruction": "counter_to_sink",
+   "scene": "counter_to_stove_s7",
+   "instruction": "counter_to_stove",
    "seed": 7,
    "kitchen": [
-    18,
-    47
-   ],
-   "taken": true,
-   "skipped_because": "",
-   "used_for_tuning": false
-  },
-  {
-   "scene": "counter_to_sink_s8",
-   "instruction": "counter_to_sink",
-   "seed": 8,
-   "kitchen": [
-    30,
-    31
-   ],
-   "taken": true,
-   "skipped_because": "",
-   "used_for_tuning": false
-  },
-  {
-   "scene": "counter_to_sink_s11",
-   "instruction": "counter_to_sink",
-   "seed": 11,
-   "kitchen": [
-    50,
+    42,
     60
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
+   "scene": "counter_to_stove_s9",
+   "instruction": "counter_to_stove",
+   "seed": 9,
+   "kitchen": [
+    34,
+    15
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false
+  },
+  {
+   "scene": "counter_to_stove_s10",
+   "instruction": "counter_to_stove",
+   "seed": 10,
+   "kitchen": [
+    39,
+    46
    ],
    "taken": true,
    "skipped_because": "",
@@ -250,8 +298,8 @@
     53,
     37
    ],
-   "taken": false,
-   "skipped_because": "no counter spot for clutter_counter_1 (placed 1 of 3)"
+   "taken": true,
+   "skipped_because": ""
   },
   {
    "instruction": "open_drawer",
@@ -289,16 +337,6 @@
    "kitchen": [
     47,
     27
-   ],
-   "taken": true,
-   "skipped_because": ""
-  },
-  {
-   "instruction": "open_drawer",
-   "seed": 5,
-   "kitchen": [
-    44,
-    37
    ],
    "taken": true,
    "skipped_because": ""
@@ -340,8 +378,8 @@
     51,
     39
    ],
-   "taken": false,
-   "skipped_because": "no counter spot for clutter_counter_0 (placed 0 of 3)"
+   "taken": true,
+   "skipped_because": ""
   },
   {
    "instruction": "close_fridge",
@@ -360,8 +398,8 @@
     44,
     37
    ],
-   "taken": false,
-   "skipped_because": "kitchen taken earlier"
+   "taken": true,
+   "skipped_because": ""
   },
   {
    "instruction": "close_fridge",
@@ -369,46 +407,6 @@
    "kitchen": [
     33,
     23
-   ],
-   "taken": false,
-   "skipped_because": "no counter spot for clutter_counter_0 (placed 0 of 3)"
-  },
-  {
-   "instruction": "close_fridge",
-   "seed": 7,
-   "kitchen": [
-    58,
-    23
-   ],
-   "taken": true,
-   "skipped_because": ""
-  },
-  {
-   "instruction": "close_fridge",
-   "seed": 8,
-   "kitchen": [
-    36,
-    46
-   ],
-   "taken": false,
-   "skipped_because": "no start place satisfies the start and floor-obstacle rules (6 tried)"
-  },
-  {
-   "instruction": "close_fridge",
-   "seed": 9,
-   "kitchen": [
-    43,
-    33
-   ],
-   "taken": true,
-   "skipped_because": ""
-  },
-  {
-   "instruction": "close_fridge",
-   "seed": 10,
-   "kitchen": [
-    49,
-    52
    ],
    "taken": true,
    "skipped_because": ""
@@ -420,8 +418,8 @@
     53,
     37
    ],
-   "taken": true,
-   "skipped_because": ""
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
   },
   {
    "instruction": "close_cabinet",
@@ -480,8 +478,8 @@
     33,
     23
    ],
-   "taken": true,
-   "skipped_because": ""
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
   },
   {
    "instruction": "close_cabinet",
@@ -489,6 +487,26 @@
    "kitchen": [
     55,
     11
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "close_cabinet",
+   "seed": 8,
+   "kitchen": [
+    59,
+    51
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "close_cabinet",
+   "seed": 9,
+   "kitchen": [
+    32,
+    14
    ],
    "taken": true,
    "skipped_because": ""
@@ -530,8 +548,8 @@
     51,
     39
    ],
-   "taken": true,
-   "skipped_because": ""
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
   },
   {
    "instruction": "sink_to_counter",
@@ -570,8 +588,8 @@
     58,
     23
    ],
-   "taken": false,
-   "skipped_because": "kitchen taken earlier"
+   "taken": true,
+   "skipped_because": ""
   },
   {
    "instruction": "sink_to_counter",
@@ -580,8 +598,8 @@
     46,
     59
    ],
-   "taken": true,
-   "skipped_because": ""
+   "taken": false,
+   "skipped_because": "no path on the map with the clutter: no base path from [ 6.7  -4.68] to [ 4.38 -2.58] through the balls (inflation 0.35 m)"
   },
   {
    "instruction": "sink_to_counter",
@@ -590,31 +608,61 @@
     32,
     14
    ],
-   "taken": true,
-   "skipped_because": ""
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
   },
   {
-   "instruction": "counter_to_sink",
-   "seed": 0,
+   "instruction": "sink_to_counter",
+   "seed": 10,
    "kitchen": [
-    55,
-    26
-   ],
-   "taken": true,
-   "skipped_because": ""
-  },
-  {
-   "instruction": "counter_to_sink",
-   "seed": 1,
-   "kitchen": [
-    17,
-    12
+    32,
+    55
    ],
    "taken": false,
-   "skipped_because": "no counter spot for clutter_counter_1 (placed 1 of 3)"
+   "skipped_because": "the target (object) has no node in the scene graph"
   },
   {
-   "instruction": "counter_to_sink",
+   "instruction": "sink_to_counter",
+   "seed": 11,
+   "kitchen": [
+    17,
+    45
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "sink_to_counter",
+   "seed": 12,
+   "kitchen": [
+    41,
+    42
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 0,
+   "kitchen": [
+    12,
+    50
+   ],
+   "taken": false,
+   "skipped_because": "no path on the map with the clutter: no base path from [ 4.21 -2.42] to [ 1.1  -0.93] through the balls (inflation 0.35 m)"
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 1,
+   "kitchen": [
+    34,
+    43
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_cabinet",
    "seed": 2,
    "kitchen": [
     52,
@@ -624,17 +672,17 @@
    "skipped_because": "no start place satisfies the start and floor-obstacle rules (4 tried)"
   },
   {
-   "instruction": "counter_to_sink",
+   "instruction": "counter_to_cabinet",
    "seed": 3,
    "kitchen": [
-    51,
-    39
+    33,
+    58
    ],
-   "taken": false,
-   "skipped_because": "kitchen taken earlier"
+   "taken": true,
+   "skipped_because": ""
   },
   {
-   "instruction": "counter_to_sink",
+   "instruction": "counter_to_cabinet",
    "seed": 4,
    "kitchen": [
     47,
@@ -644,7 +692,7 @@
    "skipped_because": "kitchen taken earlier"
   },
   {
-   "instruction": "counter_to_sink",
+   "instruction": "counter_to_cabinet",
    "seed": 5,
    "kitchen": [
     44,
@@ -654,7 +702,167 @@
    "skipped_because": "kitchen taken earlier"
   },
   {
-   "instruction": "counter_to_sink",
+   "instruction": "counter_to_cabinet",
+   "seed": 6,
+   "kitchen": [
+    52,
+    12
+   ],
+   "taken": false,
+   "skipped_because": "no start place satisfies the start and floor-obstacle rules (4 tried)"
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 7,
+   "kitchen": [
+    58,
+    23
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 8,
+   "kitchen": [
+    33,
+    58
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 9,
+   "kitchen": [
+    60,
+    45
+   ],
+   "taken": false,
+   "skipped_because": "no path on the map with the clutter: no base path from [ 2.65 -5.38] to [ 3.74 -0.96] through the balls (inflation 0.35 m)"
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 10,
+   "kitchen": [
+    49,
+    52
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 11,
+   "kitchen": [
+    17,
+    45
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 12,
+   "kitchen": [
+    41,
+    42
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 13,
+   "kitchen": [
+    55,
+    50
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 14,
+   "kitchen": [
+    18,
+    36
+   ],
+   "taken": false,
+   "skipped_because": "no path on the map with the clutter: no base path from [ 1.71 -5.83] to [ 0.92 -3.24] through the balls (inflation 0.35 m)"
+  },
+  {
+   "instruction": "counter_to_cabinet",
+   "seed": 15,
+   "kitchen": [
+    57,
+    39
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 0,
+   "kitchen": [
+    57,
+    15
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 1,
+   "kitchen": [
+    34,
+    43
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 2,
+   "kitchen": [
+    52,
+    54
+   ],
+   "taken": false,
+   "skipped_because": "no start place satisfies the start and floor-obstacle rules (4 tried)"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 3,
+   "kitchen": [
+    51,
+    39
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 4,
+   "kitchen": [
+    27,
+    38
+   ],
+   "taken": false,
+   "skipped_because": "no path on the map with the clutter: no base path from [ 0.71 -4.48] to [ 3.04 -1.91] through the balls (inflation 0.35 m)"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 5,
+   "kitchen": [
+    44,
+    37
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_stove",
    "seed": 6,
    "kitchen": [
     33,
@@ -664,51 +872,41 @@
    "skipped_because": "kitchen taken earlier"
   },
   {
-   "instruction": "counter_to_sink",
+   "instruction": "counter_to_stove",
    "seed": 7,
    "kitchen": [
-    18,
-    47
+    42,
+    60
    ],
    "taken": true,
    "skipped_because": ""
   },
   {
-   "instruction": "counter_to_sink",
+   "instruction": "counter_to_stove",
    "seed": 8,
    "kitchen": [
-    30,
-    31
+    46,
+    59
+   ],
+   "taken": false,
+   "skipped_because": "no path on the map with the clutter: no base path from [ 6.7  -4.68] to [ 4.23 -1.09] through the balls (inflation 0.35 m)"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 9,
+   "kitchen": [
+    34,
+    15
    ],
    "taken": true,
    "skipped_because": ""
   },
   {
-   "instruction": "counter_to_sink",
-   "seed": 9,
-   "kitchen": [
-    32,
-    14
-   ],
-   "taken": false,
-   "skipped_because": "kitchen taken earlier"
-  },
-  {
-   "instruction": "counter_to_sink",
+   "instruction": "counter_to_stove",
    "seed": 10,
    "kitchen": [
-    32,
-    43
-   ],
-   "taken": false,
-   "skipped_because": "no counter spot for clutter_counter_1 (placed 1 of 3)"
-  },
-  {
-   "instruction": "counter_to_sink",
-   "seed": 11,
-   "kitchen": [
-    50,
-    60
+    39,
+    46
    ],
    "taken": true,
    "skipped_because": ""

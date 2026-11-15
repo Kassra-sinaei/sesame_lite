@@ -150,9 +150,13 @@ def _floor_bounds(graph: SceneGraph, margin: float = 0.5) -> tuple[np.ndarray, n
     return pts[:, :2].min(axis=0) - margin, pts[:, :2].max(axis=0) + margin
 
 
-def plan_base_path(graph: SceneGraph, balls: dict, start_xy, goal_xy, *, inflation_m: float, z_band=(0.0, 0.45), resolution_m: float = 0.05) -> np.ndarray:
+def plan_base_path(graph: SceneGraph, balls: dict, start_xy, goal_xy, *, inflation_m: float, z_band=(0.0, 0.45), resolution_m: float = 0.05,
+                   upper: tuple | None = None) -> np.ndarray:
     """8-connected A* on an occupancy grid: a cell is occupied if it lies within rho_m + ``inflation_m`` of the centre
     of a ball in the base's height band (the same balls as the filter).
+
+    ``upper`` = (z_band, inflation_m): a second layer for the rigid upper body (the column and the shoulder, which do
+    not bend; Kasra, 2026-11-15), with its own height band and inflation; a cell must be free in both layers.
 
     Cells within one inflation radius of the start and goal are cleared (both poses touch furniture by
     construction). Raises NoPathError if no path exists.
@@ -163,10 +167,12 @@ def plan_base_path(graph: SceneGraph, balls: dict, start_xy, goal_xy, *, inflati
     nx, ny = (np.ceil((hi - lo) / resolution_m).astype(int) + 1).tolist()
     X, Y = np.meshgrid(lo[0] + resolution_m * np.arange(nx), lo[1] + resolution_m * np.arange(ny), indexing="ij")
     occ = np.zeros(nx * ny, dtype=bool)
-    xy, rho = band_points(balls, z_band)
-    if len(xy):
-        hits = cKDTree(np.c_[X.ravel(), Y.ravel()]).query_ball_point(xy, r=rho + inflation_m)
-        occ[np.concatenate([np.asarray(h, dtype=np.int64) for h in hits])] = True
+    tree = cKDTree(np.c_[X.ravel(), Y.ravel()])
+    for band, inflation in [(z_band, inflation_m)] + ([upper] if upper is not None else []):
+        xy, rho = band_points(balls, band)
+        if len(xy):
+            hits = tree.query_ball_point(xy, r=rho + inflation)
+            occ[np.concatenate([np.asarray(h, dtype=np.int64) for h in hits])] = True
     occ = occ.reshape(nx, ny)
     start, goal = np.asarray(start_xy, dtype=float), np.asarray(goal_xy, dtype=float)
     for p in (start, goal):

@@ -1,0 +1,21 @@
+scene,method,outcome,success,ticks,ticks_driving,ticks_manipulation,contact_ticks,touched,true_clearance_min_m,relaxed_ticks,hold_ticks,finger_patch_contact_ticks,tracking_error_max,unmapped_task_objects,binding_last_100_ticks
+close_cabinet_s0,nominal,unsafe_fail,False,1800,400,1400,307,O:O(31) O:O(33) O:O(41) O:O(60),-0.0123,0,0,0,2.622,,
+close_cabinet_s0,pairs_model,safe_fail,False,1800,402,1398,0,,0.0359,0,0,0,0.2717,,mobilebase0_wheeled_base -> single cabinet O(54) (6)
+close_cabinet_s0,pairs_rule,safe_fail,False,1800,402,1398,0,,0.0177,0,0,0,0.2717,,mobilebase0_wheeled_base -> single cabinet O(55) (6)
+close_cabinet_s0,proposed,safe_fail,False,1800,402,1398,0,,0.0276,0,0,0,0.3071,,mobilebase0_wheeled_base -> stove O(51) (2)
+close_fridge_s4,nominal,success,True,674,214,460,0,,0.0297,0,0,0,0.8361,,
+close_fridge_s4,pairs_model,safe_fail,False,1800,216,1584,0,,0.0317,0,0,0,0.605,,
+close_fridge_s4,pairs_rule,safe_fail,False,1800,216,1584,0,,0.0183,0,0,0,0.8554,,robot0_link7 -> fridge french door O(12) (6)
+close_fridge_s4,proposed,success,True,723,216,507,0,,0.0575,0,0,0,0.4867,,
+counter_to_sink_s0,nominal,stalled,False,159,159,0,94,O:O(24),0.0086,0,0,0,0.1472,,
+counter_to_sink_s0,pairs_model,stalled,False,161,161,0,93,O:O(24),0.0041,0,0,0,0.1021,,robot0_link1 -> counter O(4) (96)
+counter_to_sink_s0,pairs_rule,stalled,False,161,161,0,93,O:O(24),0.0041,0,0,0,0.1021,,robot0_link1 -> counter O(4) (96)
+counter_to_sink_s0,proposed,stalled,False,161,161,0,93,O:O(24),0.0041,0,0,0,0.1021,,robot0_link1 -> counter O(4) (96)
+open_drawer_s1,nominal,unsafe_fail,False,1800,621,1179,36,O:O(23),-0.0198,0,0,0,0.9384,,
+open_drawer_s1,pairs_model,safe_fail,False,1800,632,1168,0,,0.0423,0,0,0,0.3717,,
+open_drawer_s1,pairs_rule,safe_fail,False,1800,632,1168,0,,0.0423,0,0,0,0.3714,,mobilebase0_wheeled_base -> boxed food O(41) (10)
+open_drawer_s1,proposed,unsafe_fail,False,1800,632,1168,236,O:O(37),0.0099,0,0,0,0.3713,,
+sink_to_counter_s0,nominal,success_but_unsafe,True,1235,578,657,46,O:O(33) O:O(38),-0.0198,0,0,0,0.3989,,
+sink_to_counter_s0,pairs_model,safe_fail,False,1800,586,1214,0,,0.0079,0,0,0,0.4584,,robot0_right_hand -> sink O(49) (13); gripper0_right_rightfinger -> sink O(49) (12); robot0_right_hand -> counter O(43) (8)
+sink_to_counter_s0,pairs_rule,safe_fail,False,1800,586,1214,0,,0.0305,0,0,0,0.2113,,gripper0_right_leftfinger -> counter O(43) (36)
+sink_to_counter_s0,proposed,success,True,868,586,282,0,,0.0328,0,0,0,0.0898,,

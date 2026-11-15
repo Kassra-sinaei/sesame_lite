@@ -147,6 +147,13 @@
    ]
   },
   {
+   "layout": 14,
+   "style": 56,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
+   ]
+  },
+  {
    "layout": 15,
    "style": 40,
    "used_by": [
@@ -185,9 +192,23 @@
   },
   {
    "layout": 17,
+   "style": 41,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
+   ]
+  },
+  {
+   "layout": 17,
    "style": 44,
    "used_by": [
     "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 19,
+   "style": 20,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
    ]
   },
   {
@@ -202,6 +223,13 @@
    "style": 56,
    "used_by": [
     "sesame_lite: earlier pretrain runs (NavigateKitchen, REKI protocol seeds)"
+   ]
+  },
+  {
+   "layout": 21,
+   "style": 49,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
    ]
   },
   {
@@ -233,6 +261,13 @@
    ]
   },
   {
+   "layout": 23,
+   "style": 32,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
+   ]
+  },
+  {
    "layout": 24,
    "style": 47,
    "used_by": [
@@ -244,6 +279,13 @@
    "style": 2,
    "used_by": [
     "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 25,
+   "style": 53,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
    ]
   },
   {
@@ -308,6 +350,13 @@
    "style": 60,
    "used_by": [
     "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 32,
+   "style": 37,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
    ]
   },
   {
@@ -382,6 +431,13 @@
    ]
   },
   {
+   "layout": 41,
+   "style": 22,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
+   ]
+  },
+  {
    "layout": 42,
    "style": 30,
    "used_by": [
@@ -441,6 +497,13 @@
   },
   {
    "layout": 47,
+   "style": 28,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
+   ]
+  },
+  {
+   "layout": 47,
    "style": 29,
    "used_by": [
     "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
@@ -481,6 +544,13 @@
    "style": 2,
    "used_by": [
     "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 49,
+   "style": 37,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
    ]
   },
   {
@@ -555,6 +625,20 @@
    ]
   },
   {
+   "layout": 56,
+   "style": 19,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
+   ]
+  },
+  {
+   "layout": 56,
+   "style": 29,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
+   ]
+  },
+  {
    "layout": 57,
    "style": 59,
    "used_by": [
@@ -595,6 +679,13 @@
    "style": 42,
    "used_by": [
     "monitor project: RoboCasa rollouts (pi0.5 / SmolVLA, pilot, design, test)"
+   ]
+  },
+  {
+   "layout": 60,
+   "style": 48,
+   "used_by": [
+    "sesame_lite: first pick-and-place screening of stage 0a (its scenes were rebuilt or dropped)"
    ]
   }
  ]

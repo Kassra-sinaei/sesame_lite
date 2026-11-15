@@ -152,6 +152,16 @@ def _validated_candidates(candidates: Sequence[PruningCandidate]) -> tuple[Pruni
     return items
 
 
+def _validated_all(candidates: Sequence[PruningCandidate]) -> tuple[PruningCandidate, ...]:
+    """Any number of candidates, checked in chunks of MAXIMUM_CANDIDATES (for classifiers that ask in chunks)."""
+    items = tuple(candidates)
+    for k in range(0, max(len(items), 1), MAXIMUM_CANDIDATES):
+        _validated_candidates(items[k:k + MAXIMUM_CANDIDATES])
+    if len({item.stable_id for item in items}) != len(items):
+        raise ValueError("Candidate stable IDs must be unique.")
+    return items
+
+
 def _validated_goal(task_goal: str) -> str:
     if not isinstance(task_goal, str) or not task_goal.strip() or len(task_goal) > 2000:
         raise ValueError("Task goal must be bounded non-empty text.")
@@ -344,7 +354,7 @@ class ConservativeFallbackClassifier:
         task_goal: str,
         parent_graph_snapshot_id: str,
     ) -> PruningClassification:
-        items = _validated_candidates(candidates)
+        items = _validated_all(candidates)
         last_error = None
         for _ in range(self.retries + 1):
             try:
@@ -383,7 +393,7 @@ class StickyPassabilityClassifier:
         task_goal: str,
         parent_graph_snapshot_id: str,
     ) -> PruningClassification:
-        items = _validated_candidates(candidates)
+        items = _validated_all(candidates)
         remembered = {c.stable_id: self._memory[c.stable_id] for c in items if c.stable_id in self._memory}
         fresh = [c for c in items if c.stable_id not in remembered]
         if fresh:
@@ -431,31 +441,117 @@ class QwenClassifier:
         import urllib.request
 
         goal = _validated_goal(task_goal)
-        items = _validated_candidates(candidates)
-        user_message = request_payload(items, goal)
-        body = {
-            "model": self.model,
-            "messages": [{"role": "system", "content": CLASSIFIER_SYSTEM_PROMPT}, {"role": "user", "content": user_message}],
-            "response_format": {"type": "json_schema", "json_schema": {"name": "labels", "schema": classifier_output_schema(), "strict": True}},
-            "temperature": 0.7, "top_p": 0.8, "top_k": 20, "seed": 0, "max_tokens": 2048,
-            "chat_template_kwargs": {"enable_thinking": False},
-        }
-        request = urllib.request.Request(f"{self.base_url}/chat/completions", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-        t0 = time.perf_counter()
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
-                reply = json.loads(response.read())
-            structured = json.loads(reply["choices"][0]["message"]["content"] or "")
-        except (OSError, KeyError, json.JSONDecodeError) as exc:  # URLError and timeouts are OSErrors
-            raise ClassifierDecodeError(f"qwen: {exc}") from exc
+        everything = tuple(candidates)
+        if not everything:
+            raise ValueError("Classifier accepts 1..100 candidates.")
+        # the reply schema holds at most MAXIMUM_CANDIDATES labels: a longer list (a long path's corridor) is asked in
+        # chunks of that size, one request each with the same prompt, and the labels are merged
+        labels, digests, t0 = {}, [], time.perf_counter()
+        for start in range(0, len(everything), MAXIMUM_CANDIDATES):
+            items = _validated_candidates(everything[start:start + MAXIMUM_CANDIDATES])
+            user_message = request_payload(items, goal)
+            body = {
+                "model": self.model,
+                "messages": [{"role": "system", "content": CLASSIFIER_SYSTEM_PROMPT}, {"role": "user", "content": user_message}],
+                "response_format": {"type": "json_schema", "json_schema": {"name": "labels", "schema": classifier_output_schema(), "strict": True}},
+                "temperature": 0.7, "top_p": 0.8, "top_k": 20, "seed": 0, "max_tokens": 2048,
+                "chat_template_kwargs": {"enable_thinking": False},
+            }
+            request = urllib.request.Request(f"{self.base_url}/chat/completions", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
+                    reply = json.loads(response.read())
+                structured = json.loads(reply["choices"][0]["message"]["content"] or "")
+            except (OSError, KeyError, json.JSONDecodeError) as exc:  # URLError and timeouts are OSErrors
+                raise ClassifierDecodeError(f"qwen: {exc}") from exc
+            labels.update(decode_classifier_labels(structured, [c.stable_id for c in items]))
+            digests.append((hashlib.sha256(user_message.encode()).hexdigest(), hashlib.sha256(json.dumps(structured, sort_keys=True).encode()).hexdigest()))
         latency = time.perf_counter() - t0
-        labels = decode_classifier_labels(structured, [c.stable_id for c in items])
         return PruningClassification(
             labels=labels,
             parent_graph_snapshot_id=parent_graph_snapshot_id,
             classifier_version=self.classifier_version,
             model_identity="Qwen/Qwen3-14B-AWQ",
-            request_digest=hashlib.sha256(user_message.encode()).hexdigest(),
-            response_digest=hashlib.sha256(json.dumps(structured, sort_keys=True).encode()).hexdigest(),
+            request_digest=hashlib.sha256("".join(d[0] for d in digests).encode()).hexdigest(),
+            response_digest=hashlib.sha256("".join(d[1] for d in digests).encode()).hexdigest(),
             latency_s=latency,
         )
+
+
+# ---------------------------------------------------------------------- pair-level pruning (round 5 of the evaluation)
+
+ROBOT_PARTS = ("base", "arm", "hand", "fingers")
+
+# Version 2, written once on 2026-11-16 and frozen before any model run with it (SHA-256 in tuning_amendments.md). Version
+# 1 (2026-11-13) gave no positions, so the model could not tell which of several drawers or cabinets the task meant; the
+# only change is the sentence on where each object is.
+PAIR_SYSTEM_PROMPT = (
+    "You choose collision pairs for a mobile manipulator's safety filter. The filter keeps every robot part away from "
+    "every scene object. The robot parts are: base (the wheeled base), arm (the arm links), hand (the hand), fingers "
+    "(the gripper's two fingers). You receive the task goal of one manipulation step and a list of scene objects "
+    "(stable_id, semantic name, kind); names may include measured dimensions. The robot stands where it will do the "
+    "task and faces it; every object comes with its distance from the robot, its direction as seen from the robot and "
+    "the height of its centre, and the list is ordered from the nearest object to the farthest. "
+    "Reply with the (part, object) pairs whose "
+    "separation constraint must be removed so that the task can be done, because the task needs that part to touch the "
+    "object or to reach into it. Every pair you do not list stays active. List only pairs the task requires; when in "
+    "doubt, leave a pair active. Use only the given stable_ids and parts."
+)
+
+
+def pair_output_schema() -> dict[str, Any]:
+    return {
+        "type": "object", "additionalProperties": False, "required": ["drop"],
+        "properties": {"drop": {"type": "array", "maxItems": 4 * MAXIMUM_CANDIDATES, "items": {
+            "type": "object", "additionalProperties": False, "required": ["part", "stable_id"],
+            "properties": {"part": {"type": "string", "enum": list(ROBOT_PARTS)}, "stable_id": {"type": "string", "minLength": 1, "maxLength": 256}}}}},
+    }
+
+
+@dataclass(frozen=True)
+class PairClassification:
+    pairs: tuple[tuple[str, str], ...]  # (robot part, stable_id) to drop; empty when the reply could not be used
+    latency_s: float
+    raw_reply: str
+    error: str | None  # why the reply could not be used (then no pair is dropped)
+
+
+class QwenPairClassifier:
+    """Qwen3-14B on the local vLLM server (as QwenClassifier: same endpoint, sampling and seed) chooses the (robot part,
+    object) pairs to drop for one manipulation step, from the task goal, the object list and the four robot parts."""
+
+    base_url: str = QwenClassifier.base_url
+    model: str = QwenClassifier.model
+    timeout_s: float = 120.0
+
+    def classify_pairs(self, *, candidates: Sequence[PruningCandidate], task_goal: str, where: Mapping[str, dict]) -> PairClassification:
+        """``where``: stable_id -> {"distance_m", "direction", "height_m"} relative to the robot, from the map."""
+        import urllib.request
+
+        goal = _validated_goal(task_goal)
+        items = tuple(sorted(candidates, key=lambda c: where[c.stable_id]["distance_m"]))
+        payload = json.dumps({"task_goal": goal, "robot_parts": list(ROBOT_PARTS),
+                              "objects": [{"stable_id": c.stable_id, "name": c.name, "kind": c.kind, **where[c.stable_id]} for c in items]})
+        body = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": PAIR_SYSTEM_PROMPT}, {"role": "user", "content": payload}],
+            "response_format": {"type": "json_schema", "json_schema": {"name": "pairs", "schema": pair_output_schema(), "strict": True}},
+            "temperature": 0.7, "top_p": 0.8, "top_k": 20, "seed": 0, "max_tokens": 4096,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        request = urllib.request.Request(f"{self.base_url}/chat/completions", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        t0, raw, error, pairs = time.perf_counter(), "", None, ()
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
+                raw = json.loads(response.read())["choices"][0]["message"]["content"] or ""
+            reply = json.loads(raw)
+            ids = {c.stable_id for c in items}
+            got = [(d["part"], d["stable_id"]) for d in reply["drop"]]
+            bad = [p for p in got if p[0] not in ROBOT_PARTS or p[1] not in ids]
+            if bad:
+                error = f"unknown part or object in the reply: {bad[:5]}"
+            else:
+                pairs = tuple(dict.fromkeys(got))
+        except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+            error = f"{type(exc).__name__}: {exc}"
+        return PairClassification(pairs=pairs, latency_s=time.perf_counter() - t0, raw_reply=raw, error=error)

@@ -1,0 +1,21 @@
+scene,method,outcome,success,ticks,ticks_driving,ticks_manipulation,contact_ticks,touched,true_clearance_min_m,relaxed_ticks,hold_ticks,finger_patch_contact_ticks,tracking_error_max,unmapped_task_objects,binding_last_100_ticks
+close_cabinet_s0,nominal,unsafe_fail,False,1800,403,1397,1278,O:O(31) O:O(33) O:O(41) O:O(50) O:O(60),-0.024,0,0,0,2.9645,,
+close_cabinet_s0,pairs_model,safe_fail,False,1800,404,1396,0,,0.0465,0,0,0,0.2719,,
+close_cabinet_s0,pairs_rule,safe_fail,False,1800,404,1396,0,,0.0463,0,0,0,0.2719,,
+close_cabinet_s0,proposed,safe_fail,False,1800,404,1396,0,,0.0463,0,0,0,0.2719,,robot0_right_hand -> fridge french door O(80) (29)
+close_fridge_s4,nominal,success,True,918,226,692,0,,0.0722,0,0,0,0.7265,,
+close_fridge_s4,pairs_model,safe_fail,False,1800,227,1573,0,,0.0105,0,0,0,0.3688,,
+close_fridge_s4,pairs_rule,unsafe_fail,False,1800,227,1573,28,O:O(15),-0.0014,0,0,0,0.7269,,
+close_fridge_s4,proposed,success,True,635,227,408,0,,0.0907,0,0,0,0.9615,,
+counter_to_sink_s0,nominal,stalled,False,160,160,0,94,O:O(24),0.0054,0,0,0,0.2556,,
+counter_to_sink_s0,pairs_model,stalled,False,161,161,0,91,O:O(24),0.0035,0,0,0,0.1614,,robot0_link1 -> counter O(5) (100)
+counter_to_sink_s0,pairs_rule,stalled,False,161,161,0,91,O:O(24),0.0035,0,0,0,0.1614,,robot0_link1 -> counter O(5) (100)
+counter_to_sink_s0,proposed,stalled,False,161,161,0,91,O:O(24),0.0035,0,0,0,0.1614,,robot0_link1 -> counter O(5) (100)
+open_drawer_s1,nominal,unsafe_fail,False,1800,622,1178,30,O:O(23),-0.0047,0,0,0,1.0485,,
+open_drawer_s1,pairs_model,safe_fail,False,1800,634,1166,0,,0.0409,0,0,0,0.5176,,
+open_drawer_s1,pairs_rule,safe_fail,False,1800,634,1166,0,,0.0066,0,0,0,0.6255,,
+open_drawer_s1,proposed,safe_fail,False,1800,634,1166,0,,0.0066,0,0,0,0.3895,,
+sink_to_counter_s0,nominal,success,True,964,580,384,0,,0.008,0,0,0,0.0892,object,
+sink_to_counter_s0,pairs_model,unsafe_fail,False,1800,586,1214,11,O:O(33),-0.0048,0,0,0,1.0647,object,robot0_link5 -> counter O(45) (31); robot0_link5 -> sink O(79) (16); robot0_right_hand -> counter O(45) (5)
+sink_to_counter_s0,pairs_rule,unsafe_fail,False,1800,586,1214,42,O:O(33),-0.0051,0,0,0,1.0792,object,
+sink_to_counter_s0,proposed,safe_fail,False,1800,586,1214,0,,0.0013,0,0,0,0.473,object,robot0_right_hand -> hinge cabinet O(39) (50); gripper0_right_rightfinger -> hinge cabinet O(39) (27); robot0_link7 -> hinge cabinet O(39) (19)

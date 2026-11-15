@@ -1,23 +1,25 @@
-"""The 20 test scenes (EVAL_SPEC.md, section 4) by a fixed rule, from the scenes prepared so far.
+"""The test scenes (EVAL_SPEC.md, section 4; six instructions since 2026-11-16) by a fixed rule, from the scenes prepared.
 
     python -s scripts/eval_select.py
 
 Instructions in the order below; for each, seeds 0, 1, 2, ...: a seed is taken if its kitchen (layout, style) is not
 excluded (outputs/eval/results/excluded_kitchens.json, the kitchens of every screening scene, the kitchens taken by
 an earlier instruction or an earlier seed) and its scene could be built. The first 4 taken are the instruction's test
-scenes; the first of them is its tuning scene (section 3). Prints the seeds still to prepare, or, once all 20 are
-taken, writes outputs/eval/results/test_scenes.json.
+scenes. A test scene whose kitchen a tuning round ran on is marked used_for_tuning. Prints the seeds still to prepare,
+or, once every instruction has its 4 scenes, writes outputs/eval/results/test_scenes.json.
 """
 
 import json
 
 from sesame_lite.eval_scene import EVAL_DIR, SCENES_DIR
 
-ORDER = ("open_drawer", "close_fridge", "close_cabinet", "sink_to_counter", "counter_to_sink")
+ORDER = ("open_drawer", "close_fridge", "close_cabinet", "sink_to_counter", "counter_to_cabinet", "counter_to_stove")  # Kasra, 2026-11-16
+# kitchens the tuning rounds 1-6 ran on: a test scene in one of them is marked used_for_tuning, wherever it comes in the order
+TUNING_KITCHENS = {(34, 43), (51, 28), (53, 37), (44, 17), (55, 26)}
 PER_INSTRUCTION = 4
 RULE = ("instructions in the order " + ", ".join(ORDER) + "; per instruction seeds 0, 1, 2, ...; a seed is taken if its kitchen is not in "
         "excluded_kitchens.json, not a screening kitchen, not taken by an earlier instruction or seed, and its scene could be built; "
-        "the first 4 taken are the test scenes, the first of them the tuning scene")
+        "the first 4 taken are the test scenes; used_for_tuning marks every test scene whose kitchen a tuning round ran on")
 
 
 def status(scene: str):
@@ -33,7 +35,7 @@ def status(scene: str):
 
 
 excluded = {(k["layout"], k["style"]) for k in json.loads((EVAL_DIR / "results" / "excluded_kitchens.json").read_text())["kitchens"]}
-SCREENING = [f"{c}_s{s}" for c in ("counter_to_cabinet", "counter_to_sink", "counter_to_stove") for s in range(1000, 1006)]
+SCREENING = [d.name for d in SCENES_DIR.iterdir() if int(d.name.rsplit("_s", 1)[1]) >= 1000 and status(d.name)]  # screening seeds start at 1000
 excluded |= {status(name)[1] for name in SCREENING}
 taken, rows, missing = set(), [], []
 for instr in ORDER:
@@ -52,8 +54,7 @@ for instr in ORDER:
 if missing:
     print("PREPARE " + " | ".join(missing))
 else:
-    test = [{"scene": f"{r['instruction']}_s{r['seed']}", **r, "used_for_tuning": r["seed"] == min(x["seed"] for x in rows if x["instruction"] == r["instruction"] and x["taken"])}
-            for r in rows if r["taken"]]
+    test = [{"scene": f"{r['instruction']}_s{r['seed']}", **r, "used_for_tuning": tuple(r["kitchen"]) in TUNING_KITCHENS} for r in rows if r["taken"]]
     (EVAL_DIR / "results" / "test_scenes.json").write_text(json.dumps({"rule": RULE, "test_scenes": test, "considered": rows}, indent=1))
     for t in test:
-        print(t["scene"], t["kitchen"], "tuning" if t["used_for_tuning"] else "")
+        print(t["scene"], t["kitchen"], "used for tuning" if t["used_for_tuning"] else "")
