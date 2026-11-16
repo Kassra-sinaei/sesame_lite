@@ -633,7 +633,7 @@ class EvalFilterEnv(SafetyFilterEnv):
     def _pairs_setup(self) -> None:
         """Pairs dropped from the QP during manipulation (robot group, object), for the whole object. ``"rule"``: a fixed
         rule, the hand and the fingers may touch the task's objects (the plan's roles: target, container, the sink of a
-        sink task) and the support the picked object stands on. ``"model"``: Qwen chooses them once per manipulation
+        sink task) and what each of these objects stands on (A8). ``"model"``: Qwen chooses them once per manipulation
         step from the instruction, that step's object list and the four groups (``_ask_model``). Every other pair stays."""
         self.pair_groups, self.pair_map_groups, self.dropped_pairs, self.pair_reply = {}, {}, [], None
         # task objects of the plan that the map has no node for: the filter has no constraint against them and the model
@@ -647,13 +647,13 @@ class EvalFilterEnv(SafetyFilterEnv):
         if self.pair_pruning != "rule":
             return
         objects = [(role, self.plan["roles"][role]) for role in self.plan["exempt"]]
-        if self.plan.get("patch"):  # the picked object's support (RoboCasa's placement surface)
-            obj = resolve_role(self.plan["roles"][self.plan["patch"]], self.rs, self.oracle_lookup)
-            if obj in self.oracle_lookup.support:
+        for role in self.plan["exempt"] if self.plan.get("patch") else ():  # what the plan's objects stand on (RoboCasa's placement surfaces)
+            obj = resolve_role(self.plan["roles"][role], self.rs, self.oracle_lookup)
+            if obj in self.oracle_lookup.support:  # e.g. the counter under the plate that holds the picked object (A8)
                 objects.append(("support", {"oracle": self.oracle_lookup.support[obj]}))
         for role, spec in objects:
             oid = spec.get("oracle") or resolve_role(spec, self.rs, self.oracle_lookup)
-            if oid is not None:
+            if oid is not None and oid not in self.pair_groups:
                 for g in PAIR_DROP_GROUPS:
                     self._drop_pair(g, oid, self.bridge.hydra_of.get(oid, []), role)
 
@@ -751,7 +751,7 @@ class EvalFilterEnv(SafetyFilterEnv):
         if not hasattr(self, "body_group"):
             self.body_group = {b: robot_group(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, b) or "") for b in self.robot_bodies}
         vla = self.segment.kind == VLA
-        out, contacts, exempt = set(), set(), set()
+        out, contacts, exempt, points = set(), set(), set(), []
         for i in range(data.ncon):
             c = data.contact[i]
             b1, b2 = int(model.geom_bodyid[c.geom1]), int(model.geom_bodyid[c.geom2])
@@ -770,7 +770,8 @@ class EvalFilterEnv(SafetyFilterEnv):
                         exempt.add((grp, f"O:{oid}"))
                         continue
                     out.add(oid)
-        self.tick_contacts, self.tick_exempt_contacts = contacts, exempt
+                    points.append([grp, f"O:{oid}", *np.round(c.pos, 4).tolist()])
+        self.tick_contacts, self.tick_exempt_contacts, self.tick_contact_points = contacts, exempt, points
         return out
 
     def _truth(self, centres: np.ndarray, radii: np.ndarray) -> dict:
@@ -821,6 +822,7 @@ class EvalFilterEnv(SafetyFilterEnv):
         g["finger_patch_contact"] = self.patch_contact
         g["contacts"] = sorted(f"{grp}|{o}" for grp, o in self.tick_contacts)  # every contact, exempt pairs included
         g["exempt_pair_contacts"] = sorted(f"{grp}|{o}" for grp, o in self.tick_exempt_contacts)
+        g["contact_points"] = self.tick_contact_points  # counted contacts: robot group, object, world position
 
     def summary(self, success: bool, stalled: bool) -> dict:
         out = super().summary(success, stalled)

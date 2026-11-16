@@ -315,6 +315,7 @@ class SafetyFilterEnv(gym.Wrapper):
         arm_j = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"robot0_joint{k}") for k in range(1, 8)]
         self.arm_q_lo, self.arm_q_hi = model.jnt_range[arm_j, 0].copy(), model.jnt_range[arm_j, 1].copy()
         self.receipts, self.ground_truth, self.bundles, self.ball_log, self.q_log, self.sphere_h_log = [], [], [], [], [], []
+        self.object_log, self.qpos_log = [], []
         self.tick, self.epoch, self.hold_streak, self.stop_reason = 0, 0, 0, None
         self.replans, self.segment_index = 0, -1
         self.base_policy_v = np.zeros(3)  # the base's joint velocity under the policy's commands alone (starts at rest)
@@ -501,6 +502,8 @@ class SafetyFilterEnv(gym.Wrapper):
                                   "touched": sorted(f"O:{oracle_id}" for oracle_id in self._touched_oracle_ids() - self.exempt_oracle_ids),
                                   "base_xy": bp[:2].round(4).tolist(), "yaw": float(np.arctan2(R[1, 0], R[0, 0]))})
         self.q_log.append(q)
+        self.object_log.append(_raw_data(self.rs.sim).xpos[list(self.rs.obj_body_id.values())].copy())  # every free object, world position
+        self.qpos_log.append(_raw_data(self.rs.sim).qpos.astype(np.float32))  # the whole joint state (doors, drawers, objects)
         self.sphere_h_log.append(bar.h.min(axis=1) if bar.h.shape[1] else np.full(len(bar.radii), np.inf))
         self.tick += 1
 
@@ -648,7 +651,10 @@ class SafetyFilterEnv(gym.Wrapper):
                        "bundles": [b.as_dict() for b in self.bundles], "graph": self.graph.as_dict(), "oracle_graph": self.oracle_graph.as_dict(), "balls": self.ball_log,
                        "oracle_lookup": self.oracle_lookup.as_dict(), "id_bridge": self.bridge.as_dict(), "sphere_links": self.robot.links,
                        "receipts": self.receipts, "ground_truth": self.ground_truth}, f, default=_json_default)
-        np.savez_compressed(path.with_suffix(".npz"), q=np.array(self.q_log), sphere_h=np.array(self.sphere_h_log, dtype=np.float32))
+        model = _raw_model(self.rs.sim)
+        np.savez_compressed(path.with_suffix(".npz"), q=np.array(self.q_log), sphere_h=np.array(self.sphere_h_log, dtype=np.float32),
+                            object_pos=np.array(self.object_log, dtype=np.float32), object_names=np.array(list(self.rs.obj_body_id)), qpos=np.array(self.qpos_log),
+                            joint_names=np.array([mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j) or "" for j in range(model.njnt)]), joint_qposadr=model.jnt_qposadr.copy())
         self.graph.save(path.with_suffix(".dsg.json"))  # the scene graph in Hydra's file format
 
 
