@@ -1,5 +1,5 @@
 {
- "frozen_on": "2026-11-16",
+ "frozen_on": "2026-11-16 (second freeze; the first, of the same day, was withdrawn after its stage 1)",
  "note": "constants and rules of the counted runs (stages 1-4); paper names: beta_j is the code's kappa, kappa = 1 / tau",
  "filter": {
   "alpha": 2.0,
@@ -91,35 +91,73 @@
   "store_below_floor_m": 5.0
  },
  "pruning": {
-  "objects": "Qwen3-14B (existing object prompt)",
-  "pairs": "Qwen3-14B chooses the objects; the dropped robot part is fixed",
-  "dropped_robot_part": [
-   "hand",
-   "fingers",
-   "wrist flange (link 7, in the group hand)"
-  ],
-  "object_prompt_sha256": "23977911def81c2c5823a57886c22f043b428d85b8a6545cf27d1612e2e6877f",
-  "pair_prompt_sha256": "b882316d286771e93fc9c3acec7c546bf276863f71674a2c10b60bcfb4c72d2c",
-  "pair_schema_sha256": "35b8cdc9ac8c6af4271a42d7976441fe41f807f214672fbd64cb3e5d42d41c25",
-  "decisions": "asked once per scene and map kind before the runs (model_decisions.jsonl), shared by every method"
+  "objects": "Qwen3-14B labels the objects of each segment once (obstacle, passable, irrelevant); asked once per scene and map kind before the runs (model_decisions.jsonl), shared by every method",
+  "allowed_contacts": "from the plan: the gripper (fingers, hand, wrist flange) may touch the plan's task objects and the support of the picked object during manipulation; every other pair keeps its row",
+  "manipulation_region_radius_m": 1.5,
+  "object_prompt_sha256": "23977911def81c2c5823a57886c22f043b428d85b8a6545cf27d1612e2e6877f"
  },
  "scoring": "collision = simulator contact between the robot and an object on a pair that is not exempt; contacts on exempt pairs (dropped pairs; gripper with a task object the map has no node for) are logged and not counted",
  "instructions": [
-  "open_drawer",
   "close_fridge",
   "close_cabinet",
   "sink_to_counter",
   "counter_to_cabinet",
-  "counter_to_stove"
+  "counter_to_stove",
+  "counter_to_sink"
  ],
- "test_scenes_sha256": "37ce86c6055c773b8b5ee762713169b7762a55c2bdffd47b1281afe7a2f1af68",
- "model_decisions_sha256": "1fe2faf53684a05361e063f0f915ed9381fe4dc906d610db25ecaea126e16f94",
+ "test_scenes_sha256": "9aeec4828bcb44d0392ce98bccb9a59bc24e3cec43177e2d4ef6fa1fe6fbb86f",
+ "model_decisions_sha256": "c63df828d8f0003a21799cb7f4db43dc19ae6784541a7c90d6d0cdb57e241492",
  "deviations_from_EVAL_SPEC": [
   "6 instructions x 4 kitchens = 24 scenes, 168 runs (spec: 5 x 4)",
   "pick-and-place instructions: sink to counter, counter to cabinet, counter to stove (screening tie 3/6 each; Kasra chose)",
   "horizon 1800 ticks (spec: 1200, longer to be proposed)",
   "path planned on the map with the clutter (decision of 2026-11-13)",
   "close-fridge and stove scenes: as many counter objects as fit",
-  "stages run through unless results need a decision (Kasra, 2026-11-16)"
- ]
+  "stages run through unless results need a decision (Kasra, 2026-11-16)",
+  "first freeze withdrawn after stage 1 on open_drawer_s3 (now marked used_for_tuning): the model's choice of the objects the gripper may touch was replaced by the plan's task objects, the manipulation region grew from 1.0 to 1.5 m, and a stored-label lookup was fixed; every counted run was made after the second freeze",
+  "asking Qwen for the pairs is reported separately (qwen_object_choice.jsonl) and is not part of Table II"
+ ],
+ "instruction_rule": "in Table II if the unfiltered policy succeeds in at least 3 of 6 screening scenes; at most 6, by screening successes, ties: first set first, then candidate order",
+ "instruction_screening": {
+  "open_drawer": {
+   "scenes": 6,
+   "success": 2
+  },
+  "close_fridge": {
+   "scenes": 6,
+   "success": 6
+  },
+  "close_cabinet": {
+   "scenes": 6,
+   "success": 4
+  },
+  "sink_to_counter": {
+   "scenes": 6,
+   "success": 6
+  },
+  "counter_to_sink": {
+   "scenes": 6,
+   "success": 3
+  },
+  "open_cabinet": {
+   "scenes": 6,
+   "success": 2
+  },
+  "slide_dishwasher_rack": {
+   "scenes": 6,
+   "success": 3
+  },
+  "counter_to_cabinet": {
+   "scenes": 6,
+   "success": 3
+  },
+  "counter_to_stove": {
+   "scenes": 6,
+   "success": 3
+  },
+  "stove_to_counter": {
+   "scenes": 6,
+   "success": 3
+  }
+ }
 }

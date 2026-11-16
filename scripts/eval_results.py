@@ -20,6 +20,7 @@ ROWS = [("nominal", "full", "Nominal"), ("ee", "full", "End-effector filter"), (
         ("proposed", "full", "Proposed"), ("fixed", "look", "Fixed margin, look-around map"), ("proposed", "look", "Proposed, look-around map")]
 tests = json.loads((R / "test_scenes.json").read_text())["test_scenes"]
 tuning = {t["scene"]: t["used_for_tuning"] for t in tests}
+in_table = {t["scene"]: t.get("in_table2", True) for t in tests}
 
 
 def med(x):
@@ -36,7 +37,7 @@ for path in sorted((EVAL_DIR / "runs").glob("*/*.json")):
     success_tick = r["steps"] if r["success"] else None
     runs.append({
         "scene": r["scene"], "instruction": r["instruction"], "method": r["method"], "map_kind": r["map"], "seed": r["seed"], "snapshot_id": r["snapshot_id"],
-        "used_for_tuning": tuning[r["scene"]], "outcome": r["outcome"], "success": r["success"], "collision_free": r["collision_free"], "safe_success": r["safe_success"],
+        "used_for_tuning": tuning[r["scene"]], "in_table2": in_table[r["scene"]], "outcome": r["outcome"], "success": r["success"], "collision_free": r["collision_free"], "safe_success": r["safe_success"],
         "collision_ticks": r["contact_ticks"], "collided_with": " ".join(r["contact_nodes"]), "contacts_not_admitted": " ".join(r["contacts_not_admitted"]),
         "collisions_by_robot_part": json.dumps({k: v - r["exempt_contacts_by_pair"].get(k, 0) for k, v in r["contacts_by_pair"].items() if v - r["exempt_contacts_by_pair"].get(k, 0) > 0}),
         "exempt_pair_contact_ticks": r["exempt_pair_contact_ticks"], "dropped_pairs": " ".join(sorted({f"{p['group']}>{p['category']}" for p in r["dropped_pairs"]})),
@@ -59,13 +60,20 @@ def write(name, rows):
 if runs:
     write("runs.csv", runs)
     table = []
+    by_instruction = []
     for method, kind, title in ROWS:
-        rs = [x for x in runs if x["method"] == method and x["map_kind"] == kind]
+        for ins in sorted({x["instruction"] for x in runs}):
+            ri = [x for x in runs if x["method"] == method and x["map_kind"] == kind and x["instruction"] == ins]
+            if ri:
+                by_instruction.append({"instruction": ins, "in_table2": ri[0]["in_table2"], "method": title, "runs": len(ri), "collision_free": sum(x["collision_free"] for x in ri),
+                                       "success": sum(x["success"] for x in ri), "safe_success": sum(x["safe_success"] for x in ri)})
+        rs = [x for x in runs if x["method"] == method and x["map_kind"] == kind and x["in_table2"]]
         table.append({"method": title, "runs": len(rs), "collision_free": sum(x["collision_free"] for x in rs), "success": sum(x["success"] for x in rs),
                       "safe_success": sum(x["safe_success"] for x in rs), "smallest_true_clearance_m_median": med([x["smallest_true_clearance_m"] for x in rs]),
                       "task_time_s_median": med([x["task_time_s"] for x in rs]), "qp_time_ms_median": med([x["qp_time_ms_median"] for x in rs]),
                       "rows_median": med([x["rows_mean"] for x in rs])})
     write("table2.csv", table)
+    write("table2_by_instruction.csv", by_instruction)
 videos = []
 for path in sorted((EVAL_DIR / "videos").glob("*/*_overlay.mp4")):
     scene, stem = path.parent.name, path.name[: -len("_overlay.mp4")]
@@ -80,7 +88,7 @@ numbers = {
     "rho_fixed_m": json.loads((R / "rho_fixed.json").read_text())["rho_fixed_m"],
     "clutter_rule": {"floor_categories": EVAL_FLOOR_CATEGORIES, "counter_categories": EVAL_COUNTER_CATEGORIES, "rule": RULE},
     "exempt_robot_part": "fingers, hand and wrist flange (link 7)", "follower_lookahead_m": FOLLOWER_LOOKAHEAD_M,
-    "test_scenes": [{k: t[k] for k in ("scene", "kitchen", "used_for_tuning")} for t in tests],
+    "test_scenes": [{k: t[k] for k in ("scene", "kitchen", "used_for_tuning", "in_table2") if k in t} for t in tests],
 }
 replay = R / "point_rows_replay.json"
 if replay.exists():

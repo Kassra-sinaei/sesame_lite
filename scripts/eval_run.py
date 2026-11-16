@@ -26,31 +26,32 @@ from sesame_lite.env import MissionRunner, SesameRoboCasaEnv, _json_default  # n
 from sesame_lite.eval_scene import DEBUG_DIR, EVAL_DIR, FOLLOWER_LOOKAHEAD_M, SCENES_DIR, EvalFilterEnv  # noqa: E402
 from sesame_lite.filter import FilterPolicy  # noqa: E402
 
-METHODS = ("nominal", "ee", "fixed", "noissf", "proposed", "pairs_rule", "patch")
+METHODS = ("nominal", "ee", "fixed", "noissf", "proposed", "qwen_pairs", "patch")
 TITLES = {"nominal": "Nominal", "ee": "End-effector filter", "fixed": "Fixed margin", "noissf": "Proposed without ISSf", "proposed": "Proposed",
-          "pairs_rule": "Rule pairs (reference)", "patch": "Finger patch (reference)"}
+          "qwen_pairs": "Pairs chosen by Qwen (reference)", "patch": "Finger patch (reference)"}
 
 
 def method_kwargs(method: str, overrides: dict) -> dict:
     """The rows of Table II as options of the one filter; ``overrides``: FilterPolicy constants of a tuning round, the same
-    for every filtered method. In every row the language model (Qwen) prunes the objects and chooses the pairs to drop,
-    once per scene and map kind (shared by the methods); Nominal has no filter but is scored with the same pairs.
-    Two reference methods outside Table II: "pairs_rule" (category rule for the objects, fixed rule for the pairs) and
-    "patch" (whole task objects exempt, finger patch on the support; rounds 4-5)."""
+    for every filtered method. In every row the language model (Qwen) labels the objects once per segment (stored per
+    scene and map kind, shared by the methods), and the gripper may touch the objects the plan names (the task objects
+    and the support of the picked object); Nominal has no filter and is scored with the same allowed pairs.
+    Reference methods outside Table II: "qwen_pairs" (Qwen also chooses the objects the gripper may touch; rounds 5-6
+    and the confusion matrix) and "patch" (whole task objects exempt, finger patch on the support; rounds 4-5)."""
     policy = FilterPolicy(**overrides)
-    model = {"pair_pruning": "model", "classifier": "qwen"}
+    plan = {"pair_pruning": "rule", "classifier": "qwen"}
     if method == "nominal":
-        return {"filter": False, "policy": policy, "pair_pruning": "model"}
+        return {"filter": False, "policy": policy, "pair_pruning": "rule"}
     if method == "ee":
-        return {"rows_for": "hand", "policy": policy, **model}
+        return {"rows_for": "hand", "policy": policy, **plan}
     if method == "fixed":
-        return {"rho_fixed": json.loads((EVAL_DIR / "results" / "rho_fixed.json").read_text())["rho_fixed_m"], "policy": policy, **model}
+        return {"rho_fixed": json.loads((EVAL_DIR / "results" / "rho_fixed.json").read_text())["rho_fixed_m"], "policy": policy, **plan}
     if method == "noissf":
-        return {"policy": FilterPolicy(**{**overrides, "issf": False}), **model}
+        return {"policy": FilterPolicy(**{**overrides, "issf": False}), **plan}
     if method == "proposed":
-        return {"policy": policy, **model}
-    if method == "pairs_rule":
-        return {"policy": policy, "pair_pruning": "rule"}
+        return {"policy": policy, **plan}
+    if method == "qwen_pairs":
+        return {"policy": policy, "pair_pruning": "model", "classifier": "qwen"}
     return {"policy": policy}
 
 

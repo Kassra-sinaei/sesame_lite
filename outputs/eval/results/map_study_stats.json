@@ -1,0 +1,92 @@
+{
+ "noise_seeds": [
+  101,
+  202,
+  303
+ ],
+ "deltas": [
+  0.2,
+  0.1,
+  0.05,
+  0.01
+ ],
+ "tolerance_m": 0.001,
+ "full": {
+  "maps": 84,
+  "objects_with_points_and_observed_surface": 5968,
+  "mapped_objects_without_observed_surface": 0,
+  "objects_without_map_points": 620,
+  "points": 3927767,
+  "beta_j_sigma_bar_m (delta_j 0.01)": {
+   "10%": 0.00174,
+   "50%": 0.00446,
+   "90%": 0.05,
+   "99%": 0.05,
+   "max": 0.05
+  },
+  "rho_m (delta_j 0.01)": {
+   "10%": 0.05137,
+   "50%": 0.05458,
+   "90%": 0.09893,
+   "99%": 0.1011,
+   "max": 0.10214
+  },
+  "capped_point_share (delta_j 0.01)": 0.11132355865304637,
+  "m_r_m": {
+   "10%": 0.04893,
+   "50%": 0.04982,
+   "90%": 0.05092,
+   "99%": 0.05202,
+   "max": 0.05214
+  },
+  "point_error_m": {
+   "10%": 0.00022,
+   "50%": 0.002,
+   "90%": 0.02917,
+   "99%": 0.12973,
+   "max": 0.24608
+  },
+  "std_of_point_error_over_sigma (rms)": 18.459326758902105,
+  "median_of_point_error_over_sigma": 1.2474010915982954,
+  "mapping_seconds_median": 88.7
+ },
+ "look": {
+  "maps": 84,
+  "objects_with_points_and_observed_surface": 2576,
+  "mapped_objects_without_observed_surface": 0,
+  "objects_without_map_points": 4012,
+  "points": 1206192,
+  "beta_j_sigma_bar_m (delta_j 0.01)": {
+   "10%": 0.00854,
+   "50%": 0.04064,
+   "90%": 0.05,
+   "99%": 0.05,
+   "max": 0.05
+  },
+  "rho_m (delta_j 0.01)": {
+   "10%": 0.05739,
+   "50%": 0.08942,
+   "90%": 0.10012,
+   "99%": 0.10121,
+   "max": 0.10161
+  },
+  "capped_point_share (delta_j 0.01)": 0.43689230238635307,
+  "m_r_m": {
+   "10%": 0.04662,
+   "50%": 0.049,
+   "90%": 0.05059,
+   "99%": 0.05128,
+   "max": 0.05161
+  },
+  "point_error_m": {
+   "10%": 0.00036,
+   "50%": 0.00298,
+   "90%": 0.01873,
+   "99%": 0.08029,
+   "max": 0.24814
+  },
+  "std_of_point_error_over_sigma (rms)": 2.168952805557726,
+  "median_of_point_error_over_sigma": 0.3912252629916138,
+  "mapping_seconds_median": 2.8
+ }
+}

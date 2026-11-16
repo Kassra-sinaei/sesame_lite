@@ -1,0 +1,13 @@
+{
+ "amendment": "A8 (tuning_amendments.md), post hoc; every value of frozen.json except the allowed contacts",
+ "allowed_contacts": "the gripper (fingers, hand, wrist flange) may touch the plan's task objects and what each of them stands on",
+ "second_freeze_sha256": "96ab91cfb5062af31db3e22e95cdb4248e9945c2b8d4560370384e70a19836ba",
+ "sha256": {
+  "src/sesame_lite/eval_scene.py": "adbf4d7aa81a14867be885b197acbcf48725f4b201384b09e0c9a8707d7861f9",
+  "src/sesame_lite/filter.py": "17cfe3e8e214aa1e775a7cb19d6745895cb7dbd59e78c244effb3f72bc1460c1",
+  "src/sesame_lite/env.py": "2717baf06ca253b0115bef6f5274dd3f4b824b9a4a9f504d5e10e94c85aa39ab",
+  "scripts/eval_run.py": "dd9d37afd465d992cf1f46f7d5d15c27d688a01b0ddb1fd387842e03c01621cf",
+  "outputs/eval/results/test_scenes_a8.json": "43421e37825d79ad1605ab3769ace40e9415a9fff38b6b4dd141059adf7eea18",
+  "outputs/eval/results/model_decisions_a8.jsonl": "4bc66f9eeeb80a19cb8d2a41dc7a78c2b828383350cfd17655d7f4982cdebc5c"
+ }
+}

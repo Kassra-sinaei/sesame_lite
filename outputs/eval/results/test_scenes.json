@@ -1,5 +1,5 @@
 {
- "rule": "instructions in the order open_drawer, close_fridge, close_cabinet, sink_to_counter, counter_to_cabinet, counter_to_stove; per instruction seeds 0, 1, 2, ...; a seed is taken if its kitchen is not in excluded_kitchens.json, not a screening kitchen, not taken by an earlier instruction or seed, and its scene could be built; the first 4 taken are the test scenes; used_for_tuning marks every test scene whose kitchen a tuning round ran on",
+ "rule": "instructions in the order open_drawer, close_fridge, close_cabinet, sink_to_counter, counter_to_cabinet, counter_to_stove, counter_to_sink; per instruction seeds 0, 1, 2, ...; a seed is taken if its kitchen is not in excluded_kitchens.json, not a screening kitchen, not taken by an earlier instruction or seed, and its scene could be built; the first 4 taken are the test scenes; used_for_tuning marks every test scene whose kitchen a tuning round ran on; the scenes of the first set stay as selected on 2026-11-16, later instructions are selected after them; in_table2: the instruction passed the screening rule (instructions.json)",
  "test_scenes": [
   {
    "scene": "open_drawer_s0",
@@ -11,7 +11,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": true
+   "used_for_tuning": true,
+   "in_table2": false
   },
   {
    "scene": "open_drawer_s1",
@@ -23,7 +24,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": true
+   "used_for_tuning": true,
+   "in_table2": false
   },
   {
    "scene": "open_drawer_s3",
@@ -35,7 +37,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": true,
+   "in_table2": false
   },
   {
    "scene": "open_drawer_s4",
@@ -47,7 +50,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": false
   },
   {
    "scene": "close_fridge_s3",
@@ -59,7 +63,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "close_fridge_s4",
@@ -71,7 +76,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": true
+   "used_for_tuning": true,
+   "in_table2": true
   },
   {
    "scene": "close_fridge_s5",
@@ -83,7 +89,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "close_fridge_s6",
@@ -95,7 +102,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "close_cabinet_s3",
@@ -107,7 +115,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "close_cabinet_s7",
@@ -119,7 +128,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "close_cabinet_s8",
@@ -131,7 +141,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "close_cabinet_s9",
@@ -143,7 +154,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "sink_to_counter_s0",
@@ -155,7 +167,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": true
+   "used_for_tuning": true,
+   "in_table2": true
   },
   {
    "scene": "sink_to_counter_s7",
@@ -167,7 +180,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "sink_to_counter_s11",
@@ -179,7 +193,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "sink_to_counter_s12",
@@ -191,7 +206,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "counter_to_cabinet_s3",
@@ -203,7 +219,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "counter_to_cabinet_s10",
@@ -215,7 +232,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "counter_to_cabinet_s13",
@@ -227,7 +245,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "counter_to_cabinet_s15",
@@ -239,7 +258,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "counter_to_stove_s0",
@@ -251,7 +271,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "counter_to_stove_s7",
@@ -263,7 +284,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "counter_to_stove_s9",
@@ -275,7 +297,8 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
   },
   {
    "scene": "counter_to_stove_s10",
@@ -287,7 +310,60 @@
    ],
    "taken": true,
    "skipped_because": "",
-   "used_for_tuning": false
+   "used_for_tuning": false,
+   "in_table2": true
+  },
+  {
+   "scene": "counter_to_sink_s0",
+   "instruction": "counter_to_sink",
+   "seed": 0,
+   "kitchen": [
+    55,
+    26
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": true,
+   "in_table2": true
+  },
+  {
+   "scene": "counter_to_sink_s1",
+   "instruction": "counter_to_sink",
+   "seed": 1,
+   "kitchen": [
+    17,
+    12
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": true
+  },
+  {
+   "scene": "counter_to_sink_s10",
+   "instruction": "counter_to_sink",
+   "seed": 10,
+   "kitchen": [
+    32,
+    43
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": true
+  },
+  {
+   "scene": "counter_to_sink_s11",
+   "instruction": "counter_to_sink",
+   "seed": 11,
+   "kitchen": [
+    50,
+    60
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": true
   }
  ],
  "considered": [
@@ -907,6 +983,126 @@
    "kitchen": [
     39,
     46
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 0,
+   "kitchen": [
+    55,
+    26
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 1,
+   "kitchen": [
+    17,
+    12
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 2,
+   "kitchen": [
+    52,
+    54
+   ],
+   "taken": false,
+   "skipped_because": "no start place satisfies the start and floor-obstacle rules (4 tried)"
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 3,
+   "kitchen": [
+    51,
+    39
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 4,
+   "kitchen": [
+    47,
+    27
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 5,
+   "kitchen": [
+    44,
+    37
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 6,
+   "kitchen": [
+    33,
+    23
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 7,
+   "kitchen": [
+    18,
+    47
+   ],
+   "taken": false,
+   "skipped_because": "no path on the map with the clutter: no base path from [ 1.71 -5.83] to [ 2.16 -3.29] through the balls (inflation 0.35 m)"
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 8,
+   "kitchen": [
+    30,
+    31
+   ],
+   "taken": false,
+   "skipped_because": "no path on the map with the clutter: no base path from [ 1.71 -4.74] to [ 2.93 -1.62] through the balls (inflation 0.35 m)"
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 9,
+   "kitchen": [
+    32,
+    14
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 10,
+   "kitchen": [
+    32,
+    43
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_sink",
+   "seed": 11,
+   "kitchen": [
+    50,
+    60
    ],
    "taken": true,
    "skipped_because": ""

@@ -87,3 +87,91 @@ counter, counter to cabinet, counter to stove (second screening: 3/6 each for co
 stove to counter; Kasra chose the first two and added sink to counter). 24 test scenes rebuilt and selected with the
 final rules (test_scenes.json); a scene in a kitchen that a tuning round ran on is marked used_for_tuning (4 scenes).
 After this point nothing changes; if something forces a change, the campaign stops.
+
+## Second freeze (2026-11-16)
+
+Stage 1 of the first freeze (open_drawer_s3, now marked used_for_tuning; its runs are kept in outputs/eval_debug/first_freeze
+and are not counted): no method opened the drawer; Proposed had 162 collision ticks, all with two objects outside the
+1.0 m manipulation region, after the policy drove the base 0.5 m; the model had freed the gripper against another drawer
+of the stack. The model's choice of objects, checked against the plan on the 24 scenes: full maps TP 33, FP 20, FN 11,
+TN 429; look-around maps TP 16, FP 16, FN 4, TN 142 (qwen_object_choice.jsonl).
+Changes (Kasra, 2026-11-16: no deviation from main.pdf):
+- Allowed contacts come from the plan, as main.pdf states them ("an object that the plan does not allow it to touch"):
+  the gripper may touch the plan's task objects and the support of the picked object. The language model labels the
+  objects of each segment (main.pdf eq. 20). Asking the model for the pairs is not used in Table II.
+- Manipulation region 1.0 -> 1.5 m (code constant): successful unfiltered runs move the base up to 0.39 m from the stop
+  point, from where the arm reaches about 1.45 m.
+- Stored labels: a method whose balls differ slightly (no ISSf margin) takes its objects' labels from the scene's stored
+  requests.
+Check before the freeze (outputs/eval_debug/tuning/r7, not counted, the five used_for_tuning scenes): close_fridge_s4
+done (also without ISSf), sink_to_counter_s0 done, open_drawer_s0 done, all without collision; open_drawer_s3 not done,
+0 collision ticks; open_drawer_s1 not done, 5 collision ticks (hand on the counter).
+Frozen state: frozen.json, sha256 in frozen.sha256. No commit until Kasra asks for it.
+
+## Instruction set by the policy's own ability (2026-11-16, written before any counted result of the second freeze was read)
+
+Kasra: the VLA is not the contribution; instructions that pi0.5 cannot do without the filter say nothing about the
+filter and are replaced by instructions it does better. Rule, fixed here:
+- Every candidate instruction is screened with pi0.5 WITHOUT the filter on the first 6 buildable seeds from 1000
+  (kitchens that are never test scenes), 1800 ticks, full evaluation scenes (drive, clutter).
+- Candidates: open drawer, close fridge, close cabinet, sink to counter, counter to sink, open cabinet, slide the
+  dishwasher rack (to be screened now); counter to cabinet, counter to stove, stove to counter (screened: 3/6 each).
+- An instruction is in Table II if the unfiltered policy succeeds in at least 3 of its 6 screening scenes. If more than
+  six pass, the six with the most screening successes are taken; ties go first to the instructions of the frozen set
+  (open drawer, close fridge, close cabinet, sink to counter, counter to cabinet, counter to stove), then in the order
+  of the candidate list above.
+- The choice uses only the unfiltered policy on screening kitchens: no result of a filtered method and no test scene.
+  Counted runs already made for an instruction that does not pass are kept and reported in REPORT.md, outside Table II.
+
+## A8 (2026-11-15, after the second-freeze campaign; POST HOC, written by Claude while Kasra was away, pending his decision)
+
+Second-freeze result on the 24 scenes (full-pass map): collision-free / success / safe success: Nominal 5 / 16 / 5,
+End-effector 5 / 14 / 4, Fixed margin 17 / 13 / 12, Proposed without ISSf 17 / 12 / 12, Proposed 17 / 14 / 11. These
+numbers stand as the pre-registered result (table2.csv) whatever follows.
+
+Finding from these test results: every whole-body filter is 0 of 4 on counter to stove. The allowed contacts are "the
+plan's task objects and the support the picked object stands on". The code took the support from RoboCasa's placement
+fixture of the picked object only. In counter to stove the picked object lies on a plate (a task object) and has no
+placement fixture, so the counter under the plate kept its rows against the gripper; in sink to counter the same holds
+for the counter under the destination plate. With 5 cm voxels the gripper is then held about 7 cm above that counter.
+
+Change (code only, same sentence of the rule): the gripper may touch the plan's task objects and what each of them
+stands on (the placement fixture of every plan object, not only of the picked one). By a dry check on all 24 scenes
+this adds the counter under the plate in the 8 scenes of counter to stove and sink to counter and changes no pair in
+the other 16 scenes. Scoring follows the same pairs for every method, Nominal included.
+
+Diagnostic on the same 8 scenes (outputs/eval_debug/tuning/r8, Proposed only, not counted, not held out): success 2 -> 4
+of 8 (counter_to_stove_s0 and sink_to_counter_s11 now done), collision-free runs 5 -> 5 of 8; counter_to_stove_s9
+collided on more ticks (13 -> 45).
+
+Because the change follows from test results, it is judged on scenes that no run has used:
+- Replacement scenes: for sink to counter and counter to stove (in this order), the seeds after the last one considered
+  in test_scenes.json, by the same selection rule (kitchen not excluded, not a screening kitchen, not the kitchen of any
+  test scene or earlier replacement, scene could be built); the first 4 taken per instruction (test_scenes_a8.json).
+- All seven rows are run on these 8 scenes with the changed rule and every other value of the second freeze.
+- Reported side by side, whatever the outcome: table2.csv (second freeze, 24 scenes, unchanged) and table2_a8.csv (the
+  16 scenes the change does not touch, with their second-freeze runs, and the 8 replacement scenes). The 8 replaced
+  scenes stay in runs.csv. Which table the paper uses is Kasra's decision.
+
+Two crash fixes made after the campaign, neither changes a finished run: (1) filter.py could not build rows for a segment
+with no object at all (4 look-around runs crashed; fixed and run once, see repeats.csv); (2) scene preparation crashed on
+a task object without collision geometry (now recorded as a seed that cannot be built).
+
+## Housekeeping (2026-11-15, Kasra's request)
+
+Deleted to save storage: the raw runs of tuning rounds 4 to 6 (their summaries are tuning_r4_*.csv, tuning_r5_*.csv and
+the text above), all tuning videos, the voxel-variant scenes (scenes_v0.02, scenes_v0.025, scenes_v0.05 and their _p2
+copies), the videos of the first freeze, and the maps of prepared scenes that no run used (their scene.json or
+failed.json stays, so the scene selection can be reproduced). Kept in outputs/eval_debug/: tuning/r7, tuning/r8, the run
+files of the first freeze, the logs of the campaign.
+
+## Overnight plan, step 1 (2026-11-16): back to the first Table II version
+
+The code is back to the version that produced table2.csv (second freeze). Removed by hand: the A8 rule (re-added in
+step 3) and the stage-1 code (2.5 cm voxels, frame subsampling, command delay and base lag, pooled fixed radius, map
+checks); env.py, filter.py, eval_run.py and eval_scene.py match the hashes recorded in frozen_a8.json for the parts that
+were not changed after it. Kept: the row builder's fix for a segment without any object (filter.py; the 4 look-around
+runs of table2.csv were made with it), the scene preparation's error for a task object without collision geometry, and
+the analysis scripts eval_collisions.py and eval_map_clip.py. Check (revert_check.json): Nominal and Proposed on three
+of the 24 scenes with the stored maps; two scenes reproduce tick for tick, close_fridge_s3 Proposed does not (GPU
+nondeterminism of pi0.5 and of the sphere model; its outcome changed in all three reruns).

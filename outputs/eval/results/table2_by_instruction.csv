@@ -1,0 +1,48 @@
+instruction,in_table2,method,runs,collision_free,success,safe_success
+close_cabinet,True,Nominal,4,2,4,2
+close_fridge,True,Nominal,4,1,3,1
+counter_to_cabinet,True,Nominal,4,1,2,1
+counter_to_sink,True,Nominal,4,0,3,0
+counter_to_stove,True,Nominal,4,0,2,0
+open_drawer,False,Nominal,4,1,1,1
+sink_to_counter,True,Nominal,4,1,2,1
+close_cabinet,True,End-effector filter,4,1,4,1
+close_fridge,True,End-effector filter,4,2,2,2
+counter_to_cabinet,True,End-effector filter,4,2,3,1
+counter_to_sink,True,End-effector filter,4,0,3,0
+counter_to_stove,True,End-effector filter,4,0,0,0
+open_drawer,False,End-effector filter,1,1,0,0
+sink_to_counter,True,End-effector filter,4,0,2,0
+close_cabinet,True,Fixed margin,4,3,3,3
+close_fridge,True,Fixed margin,4,3,4,3
+counter_to_cabinet,True,Fixed margin,4,3,2,2
+counter_to_sink,True,Fixed margin,4,3,2,2
+counter_to_stove,True,Fixed margin,4,2,0,0
+open_drawer,False,Fixed margin,1,1,0,0
+sink_to_counter,True,Fixed margin,4,3,2,2
+close_cabinet,True,Proposed without ISSf,4,4,3,3
+close_fridge,True,Proposed without ISSf,4,2,1,1
+counter_to_cabinet,True,Proposed without ISSf,4,3,3,3
+counter_to_sink,True,Proposed without ISSf,4,3,2,2
+counter_to_stove,True,Proposed without ISSf,4,2,0,0
+open_drawer,False,Proposed without ISSf,1,1,0,0
+sink_to_counter,True,Proposed without ISSf,4,3,3,3
+close_cabinet,True,Proposed,4,4,4,4
+close_fridge,True,Proposed,4,3,3,2
+counter_to_cabinet,True,Proposed,4,2,2,1
+counter_to_sink,True,Proposed,4,3,3,2
+counter_to_stove,True,Proposed,4,2,0,0
+open_drawer,False,Proposed,4,3,1,1
+sink_to_counter,True,Proposed,4,3,2,2
+close_cabinet,True,"Fixed margin, look-around map",4,1,3,1
+close_fridge,True,"Fixed margin, look-around map",4,1,2,0
+counter_to_cabinet,True,"Fixed margin, look-around map",4,2,2,1
+counter_to_sink,True,"Fixed margin, look-around map",4,0,3,0
+counter_to_stove,True,"Fixed margin, look-around map",4,0,2,0
+sink_to_counter,True,"Fixed margin, look-around map",4,2,3,2
+close_cabinet,True,"Proposed, look-around map",4,2,4,2
+close_fridge,True,"Proposed, look-around map",4,4,3,3
+counter_to_cabinet,True,"Proposed, look-around map",4,2,2,0
+counter_to_sink,True,"Proposed, look-around map",4,1,3,1
+counter_to_stove,True,"Proposed, look-around map",4,1,0,0
+sink_to_counter,True,"Proposed, look-around map",4,2,3,2

@@ -67,6 +67,8 @@ INSTRUCTIONS = {
     "counter_to_cabinet": dict(task="EvalPickPlaceCounterToCabinet", roles={"cabinet": {"fixture_ref": "cab"}, "object": {"object": "obj"}},
                                exempt=["cabinet", "object"], target="object", patch="object"),
     "counter_to_sink": dict(task="EvalPickPlaceCounterToSink", roles={"sink": {"fixture_ref": "sink"}, "object": {"object": "obj"}}, exempt=["sink", "object"], target="object", patch="object"),
+    "open_cabinet": dict(task="EvalOpenCabinet", roles={"cabinet": {"fixture_ref": "fxtr"}}, exempt=["cabinet"], target="cabinet"),
+    "slide_dishwasher_rack": dict(task="EvalSlideDishwasherRack", roles={"dishwasher": {"fixture_ref": "dishwasher"}}, exempt=["dishwasher"], target="dishwasher"),
     "stove_to_counter": dict(task="EvalPickPlaceStoveToCounter", roles={"stove": {"fixture_ref": "stove"}, "object": {"object": "obj"}, "pan": {"object": "obj_container"},
                                                                      "container": {"object": "container"}}, exempt=["stove", "object", "pan", "container"], target="object", patch="object"),
     "counter_to_stove": dict(task="EvalPickPlaceCounterToStove", roles={"stove": {"fixture_ref": "stove"}, "object": {"object": "obj"}, "container": {"object": "container"},
@@ -421,7 +423,10 @@ def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Pa
     task_objects = [n for n in rs.objects if n not in prep.clutter]
     others = []
     for name in task_objects:
-        pts = _corners(m, d, _collision_geoms(m, _subtree_body_ids(m, rs.obj_body_id[name])))
+        geoms = _collision_geoms(m, _subtree_body_ids(m, rs.obj_body_id[name]))
+        if not len(geoms):
+            raise ScenePrepError(f"the task object {name} has no collision geometry")
+        pts = _corners(m, d, geoms)
         others.append((pts.min(axis=0), pts.max(axis=0)))
     # as many of the three counter objects as fit by the rule (Kasra, 2026-11-13 and 2026-11-15: fridges and stoves have
     # little or no counter top within reach); the others are stored under the floor
@@ -525,9 +530,19 @@ class SharedDecisions:
         from sesame_lite.agents.pruning_classifier import PruningClassification, request_payload
 
         key = "labels:" + hashlib.sha256(request_payload(tuple(candidates), task_goal).encode()).hexdigest()[:16]
-        hit = self.load().get(key)
+        data = self.load()
+        hit = data.get(key)
+        if hit is None and data.get("complete"):
+            # another method of the scene with slightly other ball radii (no ISSf margin) offers a slightly other list:
+            # its objects take the labels of the stored request that contains them all (the smallest such); an object no
+            # stored request contains stays an obstacle (the model can only remove constraints)
+            ids = [c.stable_id for c in candidates]
+            stored = [v for k, v in data.items() if k.startswith("labels:")]
+            cover = sorted((v for v in stored if all(i in v["labels"] for i in ids)), key=lambda v: len(v["labels"]))
+            src = cover[0]["labels"] if cover else {i: next((v["labels"][i] for v in stored if i in v["labels"]), "obstacle") for i in ids}
+            hit = {"labels": {i: src[i] for i in ids}, "classifier_version": stored[0]["classifier_version"] if stored else "none", "fallback_used": not cover, "latency_s": None,
+                   "detail": "labels taken from the scene's stored requests"}
         if hit is None:
-            self.must_ask(key)
             res = self.classifier.classify(candidates=candidates, task_goal=task_goal, parent_graph_snapshot_id=parent_graph_snapshot_id)
             hit = {"labels": dict(res.labels), "classifier_version": res.classifier_version, "fallback_used": res.fallback_used, "latency_s": res.latency_s, "detail": res.detail}
             self.store(key, hit)
@@ -554,10 +569,10 @@ class EvalFilterEnv(SafetyFilterEnv):
         obs, info = self.env.reset(seed=scene["seed"])
         apply_scene(self, scene)
         self.scene, self.seed, self.mission, self.n_capture = scene, scene["seed"], scene["instruction"], 0
-        if self.pair_pruning == "model" and not isinstance(self._classifier, SharedDecisions):
-            self._classifier = self.shared = SharedDecisions(Path(scene_dir) / f"model_{self.map_kind}.json", self._classifier)
-            if self.shared.classifier is None:  # the filter is off (Nominal): its scoring still uses the scene's pairs
-                self._classifier = None
+        if (self.pair_pruning == "model" or self.classifier_kind == "qwen") and not hasattr(self, "shared"):
+            self.shared = SharedDecisions(Path(scene_dir) / f"model_{self.map_kind}.json", self._classifier)
+            if self._classifier is not None:  # (filter off, Nominal: no object labels are needed)
+                self._classifier = self.shared
         self.oracle_graph, self.oracle_lookup = capture_scene_graph(self.rs)
         cache = Path(scene_dir) / f"map_{self.map_kind}"
         for sid in (self.oracle_graph.snapshot_id, json.loads((cache / "meta.json").read_text())["oracle_snapshot_id"]):

@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import mujoco
 import numpy as np
-from robocasa.environments.kitchen.atomic.kitchen_doors import CloseCabinet, CloseFridge
-from robocasa.environments.kitchen.atomic.kitchen_drawer import OpenDrawer
+from robocasa.environments.kitchen.atomic.kitchen_doors import CloseCabinet, CloseFridge, OpenCabinet
+from robocasa.environments.kitchen.atomic.kitchen_drawer import OpenDrawer, SlideDishwasherRack
 from robocasa.environments.kitchen.atomic.kitchen_navigate import NavigateKitchen
 from robocasa.environments.kitchen.atomic.kitchen_pick_place import (
     PickPlaceCounterToCabinet,
@@ -132,4 +132,12 @@ class EvalPickPlaceCounterToStove(EvalClutter, PickPlaceCounterToStove):
 
 
 class EvalPickPlaceStoveToCounter(EvalClutter, PickPlaceStoveToCounter):
+    pass
+
+
+class EvalOpenCabinet(EvalClutter, OpenCabinet):
+    pass
+
+
+class EvalSlideDishwasherRack(EvalClutter, SlideDishwasherRack):
     pass

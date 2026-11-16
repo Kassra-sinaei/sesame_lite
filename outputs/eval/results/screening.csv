@@ -1,27 +1,86 @@
-candidate,seed,scene,kitchen,built,note,language,success,steps,outcome,contact_ticks,contact_ticks_floor_obstacles,contact_ticks_counter_objects,contact_ticks_support,contact_ticks_other,contact_ticks_if_support_exempt,path_length_m,wall_s
-counter_to_cabinet,1000,counter_to_cabinet_s1000,19-20,False,no path on the map with the clutter: no base path from [ 1.71 -3.79] to [ 0.91 -1.37] through the balls (inflation 0.35 m),,,,,,,,,,,,
-counter_to_cabinet,1001,counter_to_cabinet_s1001,56-19,False,no start place satisfies the start and floor-obstacle rules (44 tried),,,,,,,,,,,,
-counter_to_cabinet,1002,counter_to_cabinet_s1002,41-22,False,no start place satisfies the start and floor-obstacle rules (33 tried),,,,,,,,,,,,
-counter_to_cabinet,1003,counter_to_cabinet_s1003,23-32,True,,Pick the liquor from the counter and place it in the cabinet.,True,476,success,0,0,0,0,0,0,3.322,204.3
-counter_to_cabinet,1004,counter_to_cabinet_s1004,47-28,True,,Pick the cake from the counter and place it in the cabinet.,False,1800,unsafe_fail,324,0,172,43,140,312,3.798,310.2
-counter_to_cabinet,1005,counter_to_cabinet_s1005,32-37,True,,Pick the avocado from the counter and place it in the cabinet.,True,641,success,0,0,0,0,0,0,6.746,161.6
-counter_to_cabinet,1006,counter_to_cabinet_s1006,36-52,False,no start place satisfies the start and floor-obstacle rules (12 tried),,,,,,,,,,,,
-counter_to_cabinet,1007,counter_to_cabinet_s1007,46-30,False,no path on the map with the clutter: no base path from [ 5.7  -6.18] to [ 3.   -1.18] through the balls (inflation 0.35 m),,,,,,,,,,,,
-counter_to_cabinet,1008,counter_to_cabinet_s1008,28-50,True,,Pick the spray from the counter and place it in the cabinet.,True,950,success_but_unsafe,20,0,0,0,20,20,10.895,202.3
-counter_to_cabinet,1009,counter_to_cabinet_s1009,44-53,True,,Pick the turmeric from the counter and place it in the cabinet.,False,1800,unsafe_fail,526,0,448,80,32,471,7.077,600.7
-counter_to_cabinet,1010,counter_to_cabinet_s1010,45-41,True,,Pick the bottled water from the counter and place it in the cabinet.,False,1800,unsafe_fail,311,0,311,0,0,311,6.581,311.9
-counter_to_stove,1000,counter_to_stove_s1000,60-48,False,no path on the map with the clutter: no base path from [ 3.15 -4.38] to [ 3.09 -0.95] through the balls (inflation 0.35 m),,,,,,,,,,,,
-counter_to_stove,1001,counter_to_stove_s1001,49-37,True,,Pick the hotdog bun from the plate and place it in the pan.,True,687,success_but_unsafe,0,0,0,0,0,0,6.765,249.7
-counter_to_stove,1002,counter_to_stove_s1002,41-22,True,,Pick the tomato from the plate and place it in the pan.,True,705,success_but_unsafe,0,0,0,0,0,0,6.493,216.2
-counter_to_stove,1003,counter_to_stove_s1003,25-53,True,,Pick the kebab skewer from the plate and place it in the pan.,False,1800,unsafe_fail,287,0,0,0,287,287,7.929,346.7
-counter_to_stove,1004,counter_to_stove_s1004,47-28,False,no path on the map with the clutter: no base path from [ 2.3  -0.57] to [ 5.25 -1.04] through the balls (inflation 0.35 m),,,,,,,,,,,,
-counter_to_stove,1005,counter_to_stove_s1005,32-37,True,,Pick the lemon wedge from the plate and place it in the pan.,False,1800,unsafe_fail,221,0,0,0,221,221,7.55,260.0
-counter_to_stove,1006,counter_to_stove_s1006,41-23,True,,Pick the steak from the plate and place it in the pan.,False,1800,unsafe_fail,42,0,0,0,42,42,5.477,270.3
-counter_to_stove,1007,counter_to_stove_s1007,15-27,True,,Pick the lemon from the plate and place it in the pan.,True,669,success_but_unsafe,1,0,0,0,1,1,7.31,243.6
-stove_to_counter,1000,stove_to_counter_s1000,26-41,True,,Pick the lime from the pan and place it on the plate.,True,550,success_but_unsafe,0,0,0,0,0,0,5.655,218.7
-stove_to_counter,1001,stove_to_counter_s1001,56-19,True,,Pick the tomato from the pan and place it on the plate.,False,1800,unsafe_fail,229,2,98,0,217,229,6.873,416.6
-stove_to_counter,1002,stove_to_counter_s1002,58-53,True,,Pick the shrimp from the pan and place it in the bowl.,False,1800,unsafe_fail,212,0,0,0,212,212,10.127,319.8
-stove_to_counter,1003,stove_to_counter_s1003,25-53,True,,Pick the potato from the pan and place it in the bowl.,False,1800,unsafe_fail,539,0,0,0,539,539,7.96,985.0
-stove_to_counter,1004,stove_to_counter_s1004,29-30,False,no path on the map with the clutter: no base path from [ 1.04 -1.85] to [ 0.25 -4.34] through the balls (inflation 0.35 m),,,,,,,,,,,,
-stove_to_counter,1005,stove_to_counter_s1005,32-37,True,,Pick the apple from the pan and place it in the bowl.,True,1009,success_but_unsafe,178,0,0,0,178,178,7.671,462.3
-stove_to_counter,1006,stove_to_counter_s1006,41-23,True,,Pick the lemon wedge from the pan and place it on the plate.,True,867,success_but_unsafe,35,2,0,0,33,35,5.995,184.0
+candidate,seed,scene,kitchen,built,language,success,steps,outcome,collision_ticks,path_length_m,counter_objects,wall_s,note
+open_drawer,1000,open_drawer_s1000,38-43,True,Open the left drawer.,False,1800,unsafe_fail,22,7.292,3,353.4,
+open_drawer,1001,open_drawer_s1001,56-19,True,Open the right drawer.,False,1800,unsafe_fail,60,7.075,3,253.1,
+open_drawer,1002,open_drawer_s1002,41-22,True,Open the left drawer.,False,1800,unsafe_fail,41,6.945,3,255.6,
+open_drawer,1003,open_drawer_s1003,25-53,True,Open the left drawer.,False,1800,unsafe_fail,9,9.668,3,291.3,
+open_drawer,1004,open_drawer_s1004,47-28,True,Open the left drawer.,True,488,success_but_unsafe,11,3.834,3,178.4,
+open_drawer,1005,open_drawer_s1005,32-37,True,Open the left drawer.,True,1033,success_but_unsafe,13,7.705,1,193.7,
+close_fridge,1000,close_fridge_s1000,41-25,False,,,,,,,,,no path on the map with the clutter: no base path from [ 3.21 -4.49] to [ 4.19 -1.54] through the balls (inflation 0.35 m)
+close_fridge,1001,close_fridge_s1001,56-19,True,Close the fridge doors.,True,737,success_but_unsafe,6,5.896,0,194.1,
+close_fridge,1002,close_fridge_s1002,41-22,True,Close the fridge door.,True,923,success,0,7.825,0,180.8,
+close_fridge,1003,close_fridge_s1003,25-53,False,,,,,,,,,no path on the map with the clutter: no base path from [ 1.21 -6.21] to [ 3.6  -1.54] through the balls (inflation 0.35 m)
+close_fridge,1004,close_fridge_s1004,21-11,True,Close the fridge door.,True,549,success_but_unsafe,126,2.709,0,191.4,
+close_fridge,1005,close_fridge_s1005,32-37,True,Close the fridge door.,True,841,success_but_unsafe,1,9.225,0,178.7,
+close_fridge,1006,close_fridge_s1006,23-26,True,Close the fridge door.,True,943,success_but_unsafe,0,8.402,0,200.2,
+close_fridge,1007,close_fridge_s1007,57-20,True,Close the fridge door.,True,735,success_but_unsafe,24,7.737,0,158.7,
+close_cabinet,1000,close_cabinet_s1000,17-41,False,,,,,,,,,no start place satisfies the start and floor-obstacle rules (9 tried)
+close_cabinet,1001,close_cabinet_s1001,56-19,True,Close the cabinet door.,False,1800,unsafe_fail,2,8.163,3,249.9,
+close_cabinet,1002,close_cabinet_s1002,41-22,True,Close the cabinet door.,True,1240,success_but_unsafe,0,6.294,3,208.3,
+close_cabinet,1003,close_cabinet_s1003,25-53,True,Close the cabinet door.,True,809,success_but_unsafe,16,8.81,3,203.1,
+close_cabinet,1004,close_cabinet_s1004,47-28,False,,,,,,,,,no path on the map with the clutter: no base path from [ 3.3  -1.57] to [ 6.1  -1.05] through the balls (inflation 0.35 m)
+close_cabinet,1005,close_cabinet_s1005,32-37,True,Close the cabinet door.,True,959,success_but_unsafe,16,7.625,1,188.8,
+close_cabinet,1006,close_cabinet_s1006,36-52,False,,,,,,,,,no start place satisfies the start and floor-obstacle rules (12 tried)
+close_cabinet,1007,close_cabinet_s1007,13-46,False,,,,,,,,,no path on the map with the clutter: no base path from [ 2.71 -3.52] to [ 0.95 -0.82] through the balls (inflation 0.35 m)
+close_cabinet,1008,close_cabinet_s1008,28-50,True,Close the cabinet door.,False,1800,unsafe_fail,224,10.557,3,270.5,
+close_cabinet,1009,close_cabinet_s1009,47-32,True,Close the cabinet doors.,True,603,success_but_unsafe,90,3.695,3,151.1,
+sink_to_counter,1000,sink_to_counter_s1000,43-17,True,Pick the potato from the sink and place it on the plate located on the counter.,True,1007,success_but_unsafe,68,7.393,3,434.9,
+sink_to_counter,1001,sink_to_counter_s1001,56-19,True,Pick the orange from the sink and place it on the plate located on the counter.,True,657,success_but_unsafe,255,6.803,3,211.7,
+sink_to_counter,1002,sink_to_counter_s1002,38-16,True,Pick the pear from the sink and place it on the plate located on the counter.,True,1195,success_but_unsafe,275,7.438,3,293.2,
+sink_to_counter,1003,sink_to_counter_s1003,25-53,True,Pick the sweet potato from the sink and place it on the plate located on the counter.,True,1039,success_but_unsafe,8,9.647,3,233.3,
+sink_to_counter,1004,sink_to_counter_s1004,27-24,False,,,,,,,,,no path on the map with the clutter: no base path from [ 2.71 -4.48] to [ 1.33 -0.9 ] through the balls (inflation 0.35 m)
+sink_to_counter,1005,sink_to_counter_s1005,39-58,True,Pick the apple from the sink and place it on the plate located on the counter.,True,827,success_but_unsafe,2,8.086,3,204.3,
+sink_to_counter,1006,sink_to_counter_s1006,36-52,False,,,,,,,,,no start place satisfies the start and floor-obstacle rules (12 tried)
+sink_to_counter,1007,sink_to_counter_s1007,13-46,False,,,,,,,,,no path on the map with the clutter: no base path from [ 2.71 -3.52] to [ 2.9  -0.89] through the balls (inflation 0.35 m)
+sink_to_counter,1008,sink_to_counter_s1008,28-50,True,Pick the cucumber from the sink and place it on the plate located on the counter.,True,775,success_but_unsafe,37,8.165,3,221.5,
+counter_to_sink,1000,counter_to_sink_s1000,56-29,True,Pick the tongs from the counter and place it in the sink.,True,837,success_but_unsafe,8,6.829,3,251.5,
+counter_to_sink,1001,counter_to_sink_s1001,56-19,True,Pick the sweet potato from the counter and place it in the sink.,True,1116,success_but_unsafe,25,7.142,3,247.2,
+counter_to_sink,1002,counter_to_sink_s1002,14-56,True,Pick the blender jug from the counter and place it in the sink.,False,1800,unsafe_fail,14,4.754,3,273.6,
+counter_to_sink,1003,counter_to_sink_s1003,25-53,True,Pick the jar from the counter and place it in the sink.,False,1800,unsafe_fail,327,9.609,3,331.4,
+counter_to_sink,1004,counter_to_sink_s1004,21-49,True,Pick the bottled drink from the counter and place it in the sink.,True,1014,success_but_unsafe,3,5.532,3,201.9,
+counter_to_sink,1005,counter_to_sink_s1005,17-41,True,Pick the blender jug from the counter and place it in the sink.,False,1800,unsafe_fail,127,5.568,3,284.9,
+open_cabinet,1000,open_cabinet_s1000,17-41,False,,,,,,,,,no start place satisfies the start and floor-obstacle rules (9 tried)
+open_cabinet,1001,open_cabinet_s1001,56-19,True,Open the cabinet door.,False,1800,unsafe_fail,2,8.129,3,251.5,
+open_cabinet,1002,open_cabinet_s1002,41-22,True,Open the cabinet door.,True,680,success_but_unsafe,0,6.285,3,167.1,
+open_cabinet,1003,open_cabinet_s1003,25-53,True,Open the cabinet door.,True,1539,success_but_unsafe,1,8.628,3,277.3,
+open_cabinet,1004,open_cabinet_s1004,47-28,False,,,,,,,,,no path on the map with the clutter: no base path from [ 3.3  -1.57] to [ 6.1  -1.05] through the balls (inflation 0.35 m)
+open_cabinet,1005,open_cabinet_s1005,32-37,True,Open the cabinet door.,False,1800,unsafe_fail,35,7.572,3,254.8,
+open_cabinet,1006,open_cabinet_s1006,36-52,False,,,,,,,,,no start place satisfies the start and floor-obstacle rules (12 tried)
+open_cabinet,1007,open_cabinet_s1007,13-46,False,,,,,,,,,no path on the map with the clutter: no base path from [ 2.71 -3.52] to [ 0.95 -0.82] through the balls (inflation 0.35 m)
+open_cabinet,1008,open_cabinet_s1008,28-50,True,Open the cabinet door.,False,1800,unsafe_fail,226,10.592,1,272.5,
+open_cabinet,1009,open_cabinet_s1009,47-32,True,Open the cabinet doors.,False,1800,unsafe_fail,1452,3.493,3,341.5,
+slide_dishwasher_rack,1000,slide_dishwasher_rack_s1000,21-20,False,,,,,,,,,no start place satisfies the start and floor-obstacle rules (10 tried)
+slide_dishwasher_rack,1001,slide_dishwasher_rack_s1001,56-19,True,Fully slide the top dishwasher rack out.,False,1800,unsafe_fail,254,4.757,2,254.5,
+slide_dishwasher_rack,1002,slide_dishwasher_rack_s1002,19-60,False,,,,,,,,,no path on the map with the clutter: no base path from [ 1.21 -3.79] to [ 3.07 -2.12] through the balls (inflation 0.35 m)
+slide_dishwasher_rack,1003,slide_dishwasher_rack_s1003,25-53,True,Fully slide the top dishwasher rack out.,False,681,stalled,111,9.547,3,179.2,
+slide_dishwasher_rack,1004,slide_dishwasher_rack_s1004,47-28,True,Fully slide the top dishwasher rack in.,True,444,success_but_unsafe,24,3.003,3,142.1,
+slide_dishwasher_rack,1005,slide_dishwasher_rack_s1005,32-37,True,Fully slide the top dishwasher rack in.,True,480,success_but_unsafe,49,4.203,3,142.9,
+slide_dishwasher_rack,1006,slide_dishwasher_rack_s1006,36-52,False,,,,,,,,,no path on the map with the clutter: no base path from [ 2.21 -3.62] to [ 1.12 -1.38] through the balls (inflation 0.35 m)
+slide_dishwasher_rack,1007,slide_dishwasher_rack_s1007,13-46,False,,,,,,,,,no path on the map with the clutter: no base path from [ 3.21 -3.52] to [ 2.75 -1.11] through the balls (inflation 0.35 m)
+slide_dishwasher_rack,1008,slide_dishwasher_rack_s1008,28-50,True,Fully slide the top dishwasher rack in.,True,685,success_but_unsafe,2,7.839,3,186.1,
+slide_dishwasher_rack,1009,slide_dishwasher_rack_s1009,47-32,True,Fully slide the top dishwasher rack in.,False,1800,unsafe_fail,25,4.482,3,364.9,
+counter_to_cabinet,1000,counter_to_cabinet_s1000,19-20,False,,,,,,,,,no path on the map with the clutter: no base path from [ 1.71 -3.79] to [ 0.91 -1.37] through the balls (inflation 0.35 m)
+counter_to_cabinet,1001,counter_to_cabinet_s1001,56-19,False,,,,,,,,,no start place satisfies the start and floor-obstacle rules (44 tried)
+counter_to_cabinet,1002,counter_to_cabinet_s1002,41-22,False,,,,,,,,,no start place satisfies the start and floor-obstacle rules (33 tried)
+counter_to_cabinet,1003,counter_to_cabinet_s1003,23-32,True,Pick the liquor from the counter and place it in the cabinet.,True,476,success,0,3.322,3,204.3,
+counter_to_cabinet,1004,counter_to_cabinet_s1004,47-28,True,Pick the cake from the counter and place it in the cabinet.,False,1800,unsafe_fail,324,3.798,3,310.2,
+counter_to_cabinet,1005,counter_to_cabinet_s1005,32-37,True,Pick the avocado from the counter and place it in the cabinet.,True,641,success,0,6.746,3,161.6,
+counter_to_cabinet,1006,counter_to_cabinet_s1006,36-52,False,,,,,,,,,no start place satisfies the start and floor-obstacle rules (12 tried)
+counter_to_cabinet,1007,counter_to_cabinet_s1007,46-30,False,,,,,,,,,no path on the map with the clutter: no base path from [ 5.7  -6.18] to [ 3.   -1.18] through the balls (inflation 0.35 m)
+counter_to_cabinet,1008,counter_to_cabinet_s1008,28-50,True,Pick the spray from the counter and place it in the cabinet.,True,950,success_but_unsafe,20,10.895,2,202.3,
+counter_to_cabinet,1009,counter_to_cabinet_s1009,44-53,True,Pick the turmeric from the counter and place it in the cabinet.,False,1800,unsafe_fail,526,7.077,2,600.7,
+counter_to_cabinet,1010,counter_to_cabinet_s1010,45-41,True,Pick the bottled water from the counter and place it in the cabinet.,False,1800,unsafe_fail,311,6.581,1,311.9,
+counter_to_stove,1000,counter_to_stove_s1000,60-48,False,,,,,,,,,no path on the map with the clutter: no base path from [ 3.15 -4.38] to [ 3.09 -0.95] through the balls (inflation 0.35 m)
+counter_to_stove,1001,counter_to_stove_s1001,49-37,True,Pick the hotdog bun from the plate and place it in the pan.,True,687,success_but_unsafe,0,6.765,2,249.7,
+counter_to_stove,1002,counter_to_stove_s1002,41-22,True,Pick the tomato from the plate and place it in the pan.,True,705,success_but_unsafe,0,6.493,1,216.2,
+counter_to_stove,1003,counter_to_stove_s1003,25-53,True,Pick the kebab skewer from the plate and place it in the pan.,False,1800,unsafe_fail,287,7.929,2,346.7,
+counter_to_stove,1004,counter_to_stove_s1004,47-28,False,,,,,,,,,no path on the map with the clutter: no base path from [ 2.3  -0.57] to [ 5.25 -1.04] through the balls (inflation 0.35 m)
+counter_to_stove,1005,counter_to_stove_s1005,32-37,True,Pick the lemon wedge from the plate and place it in the pan.,False,1800,unsafe_fail,221,7.55,0,260.0,
+counter_to_stove,1006,counter_to_stove_s1006,41-23,True,Pick the steak from the plate and place it in the pan.,False,1800,unsafe_fail,42,5.477,3,270.3,
+counter_to_stove,1007,counter_to_stove_s1007,15-27,True,Pick the lemon from the plate and place it in the pan.,True,669,success_but_unsafe,1,7.31,2,243.6,
+stove_to_counter,1000,stove_to_counter_s1000,26-41,True,Pick the lime from the pan and place it on the plate.,True,550,success_but_unsafe,0,5.655,1,218.7,
+stove_to_counter,1001,stove_to_counter_s1001,56-19,True,Pick the tomato from the pan and place it on the plate.,False,1800,unsafe_fail,229,6.873,3,416.6,
+stove_to_counter,1002,stove_to_counter_s1002,58-53,True,Pick the shrimp from the pan and place it in the bowl.,False,1800,unsafe_fail,212,10.127,2,319.8,
+stove_to_counter,1003,stove_to_counter_s1003,25-53,True,Pick the potato from the pan and place it in the bowl.,False,1800,unsafe_fail,539,7.96,1,985.0,
+stove_to_counter,1004,stove_to_counter_s1004,29-30,False,,,,,,,,,no path on the map with the clutter: no base path from [ 1.04 -1.85] to [ 0.25 -4.34] through the balls (inflation 0.35 m)
+stove_to_counter,1005,stove_to_counter_s1005,32-37,True,Pick the apple from the pan and place it in the bowl.,True,1009,success_but_unsafe,178,7.671,1,462.3,
+stove_to_counter,1006,stove_to_counter_s1006,41-23,True,Pick the lemon wedge from the pan and place it on the plate.,True,867,success_but_unsafe,35,5.995,2,184.0,

@@ -1,0 +1,182 @@
+scene,instruction,in_table2,method,map_kind,robot_part,object,object_id,object_in_map,collision_ticks,first_tick,segment,sphere_clearance_m,smallest_h_m,filter_outcome,cause
+close_cabinet_s3,close_cabinet,True,ee,full,fingers,hinge cabinet,O(73),True,2,763,VLA,-0.007698203723020859,-0.05082938438756319,filtered,barrier violated
+close_cabinet_s3,close_cabinet,True,fixed,look,arm,single cabinet,O(50),True,11,597,VLA,-0.00014120350892867645,0.11974363349441475,passthrough,"spheres in contact, h > 0"
+close_cabinet_s3,close_cabinet,True,proposed,look,hand,coffee machine,O(51),False,6,651,VLA,0.0021522899126243666,0.16315119275428117,box,object not in the map
+close_cabinet_s8,close_cabinet,True,ee,full,base,single cabinet,O(47),True,11,470,NAVIGATION,-0.018353148760303306,0.5486994525358895,passthrough,robot part without rows
+close_cabinet_s8,close_cabinet,True,fixed,look,base,single cabinet,O(47),False,12,476,NAVIGATION,-0.01818107001581691,0.6570493181935079,passthrough,object not in the map
+close_cabinet_s8,close_cabinet,True,fixed,look,arm,single cabinet,O(26),True,25,966,VLA,0.0011655474283748801,0.018848765595422305,passthrough,body outside its spheres
+close_cabinet_s8,close_cabinet,True,nominal,full,base,single cabinet,O(47),True,10,470,NAVIGATION,-0.018353148760219692,-0.05558723924977832,passive,no filter
+close_cabinet_s8,close_cabinet,True,nominal,full,hand,single cabinet,O(26),True,10,625,NAVIGATION,0.0038873444657468934,-0.00958742329098157,passive,no filter
+close_cabinet_s8,close_cabinet,True,proposed,look,base,single cabinet,O(47),False,10,482,NAVIGATION,-0.018117188679664373,0.6135650045567516,passthrough,object not in the map
+close_cabinet_s9,close_cabinet,True,ee,full,arm,single cabinet,O(39),True,5,620,VLA,0.002579699356032729,0.19966660659044708,passthrough,robot part without rows
+close_cabinet_s9,close_cabinet,True,fixed,full,arm,single cabinet,O(39),True,29,1115,VLA,0.0036289169787131134,0.03359875156265982,passthrough,body outside its spheres
+close_cabinet_s9,close_cabinet,True,fixed,look,arm,single cabinet,O(39),False,86,708,VLA,-0.005673440440597949,0.07958172580092787,box,object not in the map
+close_cabinet_s9,close_cabinet,True,nominal,full,arm,single cabinet,O(39),True,1,626,VLA,0.0008306533620638171,-0.028101681126396473,passive,no filter
+close_fridge_s3,close_fridge,True,fixed,look,arm,fridge french door,O(15),True,13,1309,VLA,0.0031459533846039944,0.02658888403010852,filtered,body outside its spheres
+close_fridge_s3,close_fridge,True,noissf,full,arm,fridge french door,O(15),True,12,1512,VLA,0.0023993786934964345,0.04308744871367515,passthrough,body outside its spheres
+close_fridge_s3,close_fridge,True,nominal,full,arm,fridge french door,O(15),True,1,423,VLA,-0.002681505862902722,0.03182743507604022,passive,no filter
+close_fridge_s4,close_fridge,True,ee,full,arm,fridge french door,O(15),True,96,1698,VLA,-0.0016804085234246938,0.34272683982888885,box,robot part without rows
+close_fridge_s4,close_fridge,True,fixed,look,arm,fridge french door,O(15),True,20,488,VLA,0.0031993495840448513,0.13503686448666308,box,body outside its spheres
+close_fridge_s4,close_fridge,True,nominal,full,arm,fridge french door,O(15),True,10,1659,VLA,0.0013854545802774246,0.06336942043309604,passive,no filter
+close_fridge_s5,close_fridge,True,ee,full,base,basket,O(52),False,184,167,NAVIGATION,-0.014086803251015814,0.6223327464514121,passthrough,object not in the map
+close_fridge_s5,close_fridge,True,ee,full,arm,fridge side by side,O(46),True,198,859,VLA,0.0009322999402904195,0.31787158339302124,passthrough,robot part without rows
+close_fridge_s5,close_fridge,True,fixed,full,base,basket,O(52),False,89,164,NAVIGATION,-0.0007024303357847789,0.22365657148085427,passthrough,object not in the map
+close_fridge_s5,close_fridge,True,fixed,look,base,basket,O(52),True,28,178,NAVIGATION,-0.001922282682022089,0.012661360861899507,filtered,"spheres in contact, h > 0"
+close_fridge_s5,close_fridge,True,noissf,full,base,basket,O(52),False,211,167,NAVIGATION,-0.014086803251015814,0.23711834645804708,passthrough,object not in the map
+close_fridge_s5,close_fridge,True,noissf,full,arm,fridge side by side,O(46),True,54,836,VLA,0.01018638081841508,0.027380506157764925,filtered,body outside its spheres
+close_fridge_s5,close_fridge,True,nominal,full,base,basket,O(52),False,94,164,NAVIGATION,0.00020782113380432565,0.2256007093307434,passive,no filter
+close_fridge_s5,close_fridge,True,proposed,full,base,basket,O(52),False,96,163,NAVIGATION,0.0020521020091228692,0.22517124784272435,passthrough,object not in the map
+counter_to_cabinet_s10,counter_to_cabinet,True,nominal,full,fingers,bottled water,O(86),True,2,1120,VLA,0.0005287810242222118,-0.03780443916455667,passive,no filter
+counter_to_cabinet_s13,counter_to_cabinet,True,ee,full,base,boxed food,O(55),True,142,378,VLA,-0.01697853244966059,0.43809931110290207,box,robot part without rows
+counter_to_cabinet_s13,counter_to_cabinet,True,ee,full,base,basket,O(58),False,257,750,VLA,-0.016200241795696985,0.4076917271353629,passthrough,object not in the map
+counter_to_cabinet_s13,counter_to_cabinet,True,ee,full,base,fridge bottom freezer,O(4),True,20,1191,VLA,-0.014814967378324842,0.12122790310066484,box,robot part without rows
+counter_to_cabinet_s13,counter_to_cabinet,True,fixed,full,base,basket,O(58),False,207,581,VLA,-0.011528805646765491,0.07022592001997072,box,object not in the map
+counter_to_cabinet_s13,counter_to_cabinet,True,fixed,full,base,box,O(13),True,14,1236,VLA,0.01072757884596251,0.5120745077599695,box,outside the segment's reach
+counter_to_cabinet_s13,counter_to_cabinet,True,fixed,full,base,flour bag,O(60),True,157,1270,VLA,-0.020850971642839333,0.7303494567753137,box,outside the segment's reach
+counter_to_cabinet_s13,counter_to_cabinet,True,fixed,full,base,stove,O(25),True,46,1412,VLA,0.017794001630174444,0.4888583720624158,box,outside the segment's reach
+counter_to_cabinet_s13,counter_to_cabinet,True,fixed,full,base,hinge cabinet,O(36),True,66,1499,VLA,0.00795714313949386,0.6756230944866699,box,outside the segment's reach
+counter_to_cabinet_s13,counter_to_cabinet,True,fixed,look,base,basket,O(58),True,174,677,VLA,0.020477321484645095,0.0657863666472937,filtered,body outside its spheres
+counter_to_cabinet_s13,counter_to_cabinet,True,fixed,look,arm,ladle,O(57),True,4,1093,VLA,-0.007301095723275711,0.009295963234623034,filtered,"spheres in contact, h > 0"
+counter_to_cabinet_s13,counter_to_cabinet,True,fixed,look,base,ladle,O(57),True,40,1633,VLA,0.028285186201447515,0.036087186195685086,filtered,body outside its spheres
+counter_to_cabinet_s13,counter_to_cabinet,True,noissf,full,base,basket,O(58),False,133,643,VLA,-0.01473656417996648,0.03520141137748006,box,object not in the map
+counter_to_cabinet_s13,counter_to_cabinet,True,noissf,full,fingers,stove,O(25),True,27,709,VLA,-0.010378876515562602,0.1567397139019781,passthrough,outside the segment's reach
+counter_to_cabinet_s13,counter_to_cabinet,True,nominal,full,base,boxed food,O(55),True,95,381,VLA,-0.010604781557581891,-0.08108044412223156,passive,no filter
+counter_to_cabinet_s13,counter_to_cabinet,True,nominal,full,base,basket,O(58),False,289,475,VLA,-0.020077175790470525,-0.11090352963870849,passive,no filter
+counter_to_cabinet_s13,counter_to_cabinet,True,nominal,full,fingers,single cabinet,O(2),True,31,1305,VLA,-0.011042657478674027,-0.05312904104525231,passive,no filter
+counter_to_cabinet_s13,counter_to_cabinet,True,nominal,full,hand,single cabinet,O(2),True,15,1321,VLA,-0.00911121913109349,-0.05116162780220363,passive,no filter
+counter_to_cabinet_s13,counter_to_cabinet,True,nominal,full,base,single cabinet,O(8),True,91,1698,VLA,-0.009409349777636175,-0.07106483203588829,passive,no filter
+counter_to_cabinet_s13,counter_to_cabinet,True,proposed,full,base,basket,O(58),False,40,582,VLA,-0.012863856387188302,0.06734605785503386,box,object not in the map
+counter_to_cabinet_s13,counter_to_cabinet,True,proposed,full,base,flour bag,O(60),True,41,902,VLA,-0.017369602537386605,0.43342798864155907,box,outside the segment's reach
+counter_to_cabinet_s13,counter_to_cabinet,True,proposed,full,base,stove,O(25),True,9,999,VLA,0.007457284490721555,0.5843048661753908,box,outside the segment's reach
+counter_to_cabinet_s15,counter_to_cabinet,True,proposed,look,hand,bottled water,O(83),False,49,712,VLA,-0.0020264103984240552,,passthrough,object not in the map
+counter_to_cabinet_s15,counter_to_cabinet,True,proposed,look,hand,coffee machine,O(39),False,15,721,VLA,-0.00016230394078482757,,passthrough,object not in the map
+counter_to_cabinet_s15,counter_to_cabinet,True,proposed,look,fingers,bottled water,O(83),False,45,986,VLA,-0.006398044311618039,,passthrough,object not in the map
+counter_to_cabinet_s3,counter_to_cabinet,True,ee,full,base,stove,O(21),True,2,625,NAVIGATION,0.018290735565946042,0.13437752847530032,passthrough,robot part without rows
+counter_to_cabinet_s3,counter_to_cabinet,True,fixed,look,base,stove,O(21),False,2,625,NAVIGATION,0.018290735565946042,0.7335553508565988,passthrough,object not in the map
+counter_to_cabinet_s3,counter_to_cabinet,True,fixed,look,hand,juice,O(80),False,13,1036,VLA,-8.572757121351471e-05,0.7077194928607886,passthrough,object not in the map
+counter_to_cabinet_s3,counter_to_cabinet,True,fixed,look,arm,juice,O(80),False,3,1043,VLA,-0.004394112443324105,0.7072036235548367,passthrough,object not in the map
+counter_to_cabinet_s3,counter_to_cabinet,True,nominal,full,base,stove,O(21),True,2,625,NAVIGATION,0.01829073554000768,-0.034525212394213245,passive,no filter
+counter_to_cabinet_s3,counter_to_cabinet,True,proposed,full,fingers,condiment bottle,O(79),True,7,1736,VLA,-0.0017733327130459442,0.022438603529796375,filtered,"spheres in contact, h > 0"
+counter_to_cabinet_s3,counter_to_cabinet,True,proposed,look,base,stove,O(21),False,1,626,NAVIGATION,0.018268109576916686,0.6894292901714961,passthrough,object not in the map
+counter_to_sink_s0,counter_to_sink,True,ee,full,base,hinge cabinet,O(36),True,167,347,VLA,1.3817275595226497e-05,0.16411185913853554,passthrough,robot part without rows
+counter_to_sink_s0,counter_to_sink,True,fixed,look,base,hinge cabinet,O(36),False,242,359,VLA,-0.0037938623888139483,0.12542082170499802,box,object not in the map
+counter_to_sink_s0,counter_to_sink,True,nominal,full,base,hinge cabinet,O(36),True,373,347,VLA,-0.0027257033037112327,-0.061957377198703915,passive,no filter
+counter_to_sink_s0,counter_to_sink,True,proposed,look,base,hinge cabinet,O(36),False,244,368,VLA,-0.0029955925666733524,0.08334654677817571,filtered,object not in the map
+counter_to_sink_s1,counter_to_sink,True,ee,full,arm,sink,O(81),True,25,513,VLA,0.0022850884917154646,0.02837629682643101,filtered,robot part without rows
+counter_to_sink_s1,counter_to_sink,True,ee,full,arm,counter,O(69),True,33,520,VLA,-0.002492996007204082,0.020982039371100013,filtered,robot part without rows
+counter_to_sink_s1,counter_to_sink,True,ee,full,base,hinge cabinet,O(74),True,114,1130,VLA,-0.01488033020373744,0.04559833222825341,filtered,robot part without rows
+counter_to_sink_s1,counter_to_sink,True,fixed,look,arm,sink,O(81),False,55,558,VLA,0.008918820780960658,0.6392572436822664,box,object not in the map
+counter_to_sink_s1,counter_to_sink,True,fixed,look,fingers,condiment bottle,O(98),False,83,1220,VLA,-0.0016500147263597102,0.7002612558539028,passthrough,object not in the map
+counter_to_sink_s1,counter_to_sink,True,fixed,look,hand,condiment bottle,O(98),False,43,1221,VLA,-0.0022225676184442003,0.7002580133340703,passthrough,object not in the map
+counter_to_sink_s1,counter_to_sink,True,fixed,look,hand,bottled water,O(97),False,3,1285,VLA,0.01405296538745697,0.7006263758185148,passthrough,object not in the map
+counter_to_sink_s1,counter_to_sink,True,fixed,look,base,bottled water,O(97),False,7,1389,VLA,0.024746566965245437,0.744757613590078,passthrough,object not in the map
+counter_to_sink_s1,counter_to_sink,True,nominal,full,arm,sink,O(81),True,2,509,VLA,-0.002337229703998897,-0.049506388752564016,passive,no filter
+counter_to_sink_s1,counter_to_sink,True,nominal,full,arm,counter,O(69),True,198,955,VLA,0.0001638847589492537,-0.05231798969699367,passive,no filter
+counter_to_sink_s1,counter_to_sink,True,nominal,full,arm,dishwasher,O(68),True,53,1652,VLA,-0.0006582055590608413,-0.03880060201011076,passive,no filter
+counter_to_sink_s1,counter_to_sink,True,proposed,look,arm,sink,O(81),False,3,529,VLA,-0.0025867347470286822,0.5913492621740878,passthrough,object not in the map
+counter_to_sink_s1,counter_to_sink,True,proposed,look,arm,counter,O(69),False,49,1003,VLA,0.0024815517663955428,0.5869879504910905,passthrough,object not in the map
+counter_to_sink_s1,counter_to_sink,True,proposed,look,base,hinge cabinet,O(74),False,340,1144,VLA,-0.013438591012452386,0.7893556418969411,passthrough,object not in the map
+counter_to_sink_s1,counter_to_sink,True,proposed,look,arm,banana,O(101),False,6,1347,VLA,-0.015276217437698622,0.7761483180863393,box,object not in the map
+counter_to_sink_s10,counter_to_sink,True,ee,full,arm,canned food,O(73),True,18,606,VLA,-0.001862826048001233,0.04272247365080359,filtered,robot part without rows
+counter_to_sink_s10,counter_to_sink,True,fixed,look,fingers,canned food,O(73),False,95,518,VLA,-0.0006255484470604634,0.745355458209831,passthrough,object not in the map
+counter_to_sink_s10,counter_to_sink,True,fixed,look,hand,canned food,O(73),False,85,537,VLA,-0.0023018506291228834,0.7453770574315857,passthrough,object not in the map
+counter_to_sink_s10,counter_to_sink,True,nominal,full,hand,canned food,O(73),True,86,531,VLA,-0.003075847850891232,-0.04322445034925802,passive,no filter
+counter_to_sink_s10,counter_to_sink,True,nominal,full,fingers,canned food,O(73),True,78,539,VLA,-0.010649132563184734,-0.04496639136270053,passive,no filter
+counter_to_sink_s10,counter_to_sink,True,nominal,full,arm,counter,O(29),True,18,672,VLA,0.002233864665031407,-0.07556433197925463,passive,no filter
+counter_to_sink_s10,counter_to_sink,True,nominal,full,arm,sink,O(35),True,4,984,VLA,0.0029366327601864257,-0.03691290393568733,passive,no filter
+counter_to_sink_s11,counter_to_sink,True,ee,full,base,dishwasher,O(37),True,17,872,VLA,-0.01942398537910664,0.2861156666152789,box,robot part without rows
+counter_to_sink_s11,counter_to_sink,True,fixed,full,fingers,condiment bottle,O(81),True,83,651,VLA,0.0011384210489156395,0.004471415797872486,filtered,body outside its spheres
+counter_to_sink_s11,counter_to_sink,True,fixed,look,hand,condiment bottle,O(81),False,66,677,VLA,0.004020339503673989,1.5214327572496222,passthrough,object not in the map
+counter_to_sink_s11,counter_to_sink,True,fixed,look,fingers,condiment bottle,O(81),False,107,686,VLA,-0.001391192676789485,1.5214096189311133,passthrough,object not in the map
+counter_to_sink_s11,counter_to_sink,True,noissf,full,hand,condiment bottle,O(81),True,15,667,VLA,0.0030291516501960818,-0.00010511769834533821,filtered,body outside its spheres
+counter_to_sink_s11,counter_to_sink,True,nominal,full,hand,condiment bottle,O(81),True,17,911,VLA,-0.0020072761070293287,-0.01751865076622854,passive,no filter
+counter_to_sink_s11,counter_to_sink,True,nominal,full,arm,counter,O(38),True,9,1211,VLA,0.001043536265134773,-0.05633954611594502,passive,no filter
+counter_to_sink_s11,counter_to_sink,True,nominal,full,arm,condiment bottle,O(81),True,3,1233,VLA,-0.001734476898656176,-0.06132245596088454,passive,no filter
+counter_to_sink_s11,counter_to_sink,True,proposed,full,hand,condiment bottle,O(81),True,136,650,VLA,-0.000978428208386891,0.004370336499485258,filtered,"spheres in contact, h > 0"
+counter_to_sink_s11,counter_to_sink,True,proposed,full,fingers,condiment bottle,O(81),True,134,654,VLA,0.0018524052457745896,0.0034936701221393654,filtered,body outside its spheres
+counter_to_sink_s11,counter_to_sink,True,proposed,look,fingers,condiment bottle,O(81),False,65,656,VLA,0.0004266524599376761,1.5560291678350537,passthrough,object not in the map
+counter_to_sink_s11,counter_to_sink,True,proposed,look,base,dishwasher,O(37),False,17,879,VLA,-0.017168149799146867,1.268760353428353,box,object not in the map
+counter_to_stove_s0,counter_to_stove,True,ee,full,base,basket,O(81),False,4,191,NAVIGATION,0.023090100372059108,0.47927097310363886,passthrough,object not in the map
+counter_to_stove_s0,counter_to_stove,True,fixed,full,base,basket,O(81),False,6,189,NAVIGATION,0.015052317414597532,0.058079060678969036,passthrough,object not in the map
+counter_to_stove_s0,counter_to_stove,True,fixed,look,base,basket,O(81),True,9,194,NAVIGATION,0.016966498892956733,0.03711238789676971,filtered,body outside its spheres
+counter_to_stove_s0,counter_to_stove,True,noissf,full,base,basket,O(81),False,8,188,NAVIGATION,0.014949816469993965,0.06157357901896743,passthrough,object not in the map
+counter_to_stove_s0,counter_to_stove,True,nominal,full,base,basket,O(81),False,4,191,NAVIGATION,0.023090100373331757,0.04805823718484162,passive,no filter
+counter_to_stove_s0,counter_to_stove,True,nominal,full,fingers,counter,O(18),True,19,457,VLA,-0.004478625787258092,-0.0538314572126311,passive,no filter
+counter_to_stove_s0,counter_to_stove,True,proposed,full,base,basket,O(81),False,8,189,NAVIGATION,0.014969608272948381,0.0583069428833749,passthrough,object not in the map
+counter_to_stove_s10,counter_to_stove,True,ee,full,arm,stovetop,O(71),True,239,489,VLA,-0.0028589536631370704,0.011161554782138535,filtered,robot part without rows
+counter_to_stove_s10,counter_to_stove,True,ee,full,arm,counter,O(72),True,20,502,VLA,0.0013844388723373152,0.1036190519733576,passthrough,robot part without rows
+counter_to_stove_s10,counter_to_stove,True,fixed,look,arm,counter,O(72),True,13,715,VLA,0.0036705750226974226,0.020165054073964822,passthrough,body outside its spheres
+counter_to_stove_s10,counter_to_stove,True,fixed,look,arm,stovetop,O(71),True,3,1637,VLA,-0.001017289348867051,-0.037219550279403074,filtered,barrier violated
+counter_to_stove_s10,counter_to_stove,True,nominal,full,arm,stovetop,O(71),True,205,486,VLA,0.0011318157231544335,-0.03796468647765978,passive,no filter
+counter_to_stove_s10,counter_to_stove,True,nominal,full,arm,counter,O(72),True,16,492,VLA,0.002336265444755528,-0.05201576569305557,passive,no filter
+counter_to_stove_s10,counter_to_stove,True,nominal,full,arm,pan,O(110),True,7,1396,VLA,-0.0015967108997567564,-0.04669622585320443,passive,no filter
+counter_to_stove_s10,counter_to_stove,True,proposed,look,hand,counter,O(72),True,8,1260,VLA,0.0011329984602351205,0.12220441921129277,passthrough,body outside its spheres
+counter_to_stove_s10,counter_to_stove,True,proposed,look,base,single cabinet,O(58),False,104,1696,VLA,0.017374324284930465,0.14858794559369612,box,object not in the map
+counter_to_stove_s7,counter_to_stove,True,ee,full,base,single cabinet,O(26),True,6,254,NAVIGATION,-0.018066111280320582,0.5449060832615297,passthrough,robot part without rows
+counter_to_stove_s7,counter_to_stove,True,ee,full,arm,hinge cabinet,O(66),True,13,1628,VLA,0.005221220880036195,0.0956698719125212,box,robot part without rows
+counter_to_stove_s7,counter_to_stove,True,fixed,look,base,single cabinet,O(26),False,5,263,NAVIGATION,-0.0142020021661705,0.4959294139180008,passthrough,object not in the map
+counter_to_stove_s7,counter_to_stove,True,fixed,look,hand,bottled water,O(76),False,7,598,VLA,0.0012225637773614906,0.7097002046020856,passthrough,object not in the map
+counter_to_stove_s7,counter_to_stove,True,fixed,look,arm,counter,O(47),False,3,731,VLA,0.0017587821185588576,0.7183444792943615,box,object not in the map
+counter_to_stove_s7,counter_to_stove,True,fixed,look,arm,boxed drink,O(75),False,1,735,VLA,-0.0009404147868383728,0.7155916199196809,box,object not in the map
+counter_to_stove_s7,counter_to_stove,True,fixed,look,arm,stovetop,O(58),False,1,736,VLA,0.002553699109124438,0.7156506552645187,passthrough,object not in the map
+counter_to_stove_s7,counter_to_stove,True,fixed,look,fingers,boxed drink,O(75),False,134,946,VLA,-0.0043287557971531596,0.7062295916362882,passthrough,object not in the map
+counter_to_stove_s7,counter_to_stove,True,nominal,full,base,single cabinet,O(26),True,7,254,NAVIGATION,-0.018066105061236445,-0.05556330284779021,passive,no filter
+counter_to_stove_s7,counter_to_stove,True,nominal,full,fingers,bottled water,O(76),True,44,592,VLA,-0.0020200269440099512,-0.042085780267783895,passive,no filter
+counter_to_stove_s7,counter_to_stove,True,nominal,full,fingers,counter,O(47),True,2,854,VLA,-0.0029997286200523637,-0.04796270705060448,passive,no filter
+counter_to_stove_s7,counter_to_stove,True,nominal,full,arm,counter,O(47),True,2,857,VLA,0.0005564633011817671,-0.04492872731634001,passive,no filter
+counter_to_stove_s7,counter_to_stove,True,nominal,full,fingers,boxed drink,O(75),True,81,907,VLA,-0.0007336693065793602,-0.03946948825073063,passive,no filter
+counter_to_stove_s7,counter_to_stove,True,nominal,full,hand,bottled water,O(76),True,9,1040,VLA,-0.004283013399160208,-0.014761768692936376,passive,no filter
+counter_to_stove_s7,counter_to_stove,True,proposed,look,base,single cabinet,O(26),False,3,273,NAVIGATION,-0.002811262916896151,0.4921862732811615,passthrough,object not in the map
+counter_to_stove_s7,counter_to_stove,True,proposed,look,fingers,counter,O(47),False,77,640,VLA,-0.005872374475002315,0.6675321381381831,box,object not in the map
+counter_to_stove_s7,counter_to_stove,True,proposed,look,arm,boxed drink,O(75),False,3,645,VLA,-0.005371860082283097,0.6678892331209341,passthrough,object not in the map
+counter_to_stove_s7,counter_to_stove,True,proposed,look,arm,bottled water,O(76),False,29,745,VLA,0.00077972407701319,0.6629563756327737,passthrough,object not in the map
+counter_to_stove_s7,counter_to_stove,True,proposed,look,arm,stovetop,O(58),False,9,859,VLA,0.004609416819232479,0.6637791992921156,passthrough,object not in the map
+counter_to_stove_s7,counter_to_stove,True,proposed,look,arm,counter,O(47),False,3,1050,VLA,0.0035399072754405056,0.6631495623859901,box,object not in the map
+counter_to_stove_s9,counter_to_stove,True,ee,full,hand,condiment bottle,O(60),True,6,1064,VLA,-0.0004439386179837142,0.02679420205677395,passthrough,"spheres in contact, h > 0"
+counter_to_stove_s9,counter_to_stove,True,fixed,full,arm,condiment bottle,O(60),True,13,1259,VLA,0.012743200191200885,0.011555818978701997,filtered,body outside its spheres
+counter_to_stove_s9,counter_to_stove,True,fixed,look,arm,condiment bottle,O(60),True,6,421,VLA,0.011583187516273352,0.015935557910665164,filtered,body outside its spheres
+counter_to_stove_s9,counter_to_stove,True,fixed,look,fingers,counter,O(23),True,1,543,VLA,-0.005487447679042842,0.060429366534269766,passthrough,"spheres in contact, h > 0"
+counter_to_stove_s9,counter_to_stove,True,noissf,full,arm,condiment bottle,O(60),True,15,407,VLA,0.013034086792548485,0.008947410124780723,filtered,body outside its spheres
+counter_to_stove_s9,counter_to_stove,True,nominal,full,arm,condiment bottle,O(60),True,2,409,VLA,0.0020391884446143843,-0.01743621338547703,passive,no filter
+counter_to_stove_s9,counter_to_stove,True,proposed,full,hand,condiment bottle,O(60),True,1,483,VLA,0.003776418108857621,0.013851552515358141,filtered,body outside its spheres
+counter_to_stove_s9,counter_to_stove,True,proposed,full,arm,condiment bottle,O(60),True,12,1265,VLA,0.009109099557722586,0.010096835973626882,filtered,body outside its spheres
+counter_to_stove_s9,counter_to_stove,True,proposed,look,fingers,counter,O(23),True,11,1401,VLA,-0.003753727376461055,0.054904199706174134,passthrough,"spheres in contact, h > 0"
+open_drawer_s0,open_drawer,False,nominal,full,hand,counter,O(53),True,28,628,VLA,0.003609168037853494,0.011285399927210109,passive,no filter
+open_drawer_s0,open_drawer,False,nominal,full,fingers,counter,O(53),True,20,921,VLA,-0.0015113434195518222,0.004194861653004103,passive,no filter
+open_drawer_s1,open_drawer,False,nominal,full,hand,counter,O(23),True,15,818,VLA,0.0002771473490762698,0.011063640598297772,passive,no filter
+open_drawer_s1,open_drawer,False,nominal,full,fingers,counter,O(23),True,15,1010,VLA,-0.0046517501699350206,0.013363109514747885,passive,no filter
+open_drawer_s1,open_drawer,False,proposed,full,hand,counter,O(23),True,5,830,VLA,0.0039439571124365025,0.021258886230451378,filtered,body outside its spheres
+open_drawer_s3,open_drawer,False,nominal,full,base,hinge cabinet,O(22),True,19,488,NAVIGATION,-0.01946792749708237,-0.06096880058783256,passive,no filter
+open_drawer_s3,open_drawer,False,nominal,full,hand,counter,O(9),True,26,741,VLA,-0.0006316012144088473,-0.07101277223544084,passive,no filter
+sink_to_counter_s0,sink_to_counter,True,ee,full,arm,sink,O(27),True,14,1769,VLA,0.0008069220432911361,0.019402831299609666,passthrough,robot part without rows
+sink_to_counter_s11,sink_to_counter,True,ee,full,arm,sink,O(81),True,12,495,VLA,0.000676709585759272,0.029275030173667095,passthrough,robot part without rows
+sink_to_counter_s11,sink_to_counter,True,fixed,look,arm,sink,O(81),False,37,511,VLA,-0.0009683761309451505,0.3784935256791125,box,object not in the map
+sink_to_counter_s11,sink_to_counter,True,nominal,full,arm,sink,O(81),True,28,496,VLA,0.0006023219618080805,-0.09137968385004991,passive,no filter
+sink_to_counter_s11,sink_to_counter,True,nominal,full,fingers,counter,O(68),True,3,1709,VLA,-0.005803709924221065,-0.0402777246906985,passive,no filter
+sink_to_counter_s11,sink_to_counter,True,proposed,look,base,hinge cabinet,O(74),False,8,336,NAVIGATION,0.0193696347854925,0.17629635069158445,passthrough,object not in the map
+sink_to_counter_s11,sink_to_counter,True,proposed,look,arm,sink,O(81),False,25,537,VLA,-0.0004939231589573961,0.35831039442183593,passthrough,object not in the map
+sink_to_counter_s12,sink_to_counter,True,ee,full,base,hinge cabinet,O(16),True,203,480,VLA,-0.015120136834756243,0.24771926520976,passthrough,robot part without rows
+sink_to_counter_s12,sink_to_counter,True,nominal,full,base,hinge cabinet,O(16),True,273,480,VLA,-0.016232010186683216,-0.07234841456430637,passive,no filter
+sink_to_counter_s7,sink_to_counter,True,ee,full,arm,boxed drink,O(62),True,34,735,VLA,-0.0008022721795210852,0.009768903744193758,passthrough,robot part without rows
+sink_to_counter_s7,sink_to_counter,True,ee,full,hand,boxed drink,O(62),True,19,743,VLA,-0.0034873441014000375,0.023948247265103757,passthrough,"spheres in contact, h > 0"
+sink_to_counter_s7,sink_to_counter,True,ee,full,arm,sink,O(41),True,140,805,VLA,0.004081106532431711,0.03992355378676386,passthrough,robot part without rows
+sink_to_counter_s7,sink_to_counter,True,ee,full,arm,counter,O(36),True,5,831,VLA,0.0040818880859914974,0.03781576770285472,passthrough,robot part without rows
+sink_to_counter_s7,sink_to_counter,True,ee,full,arm,mug,O(65),True,48,1337,VLA,-0.0017958186697370065,0.05244003239772389,passthrough,robot part without rows
+sink_to_counter_s7,sink_to_counter,True,fixed,full,arm,boxed drink,O(62),True,4,823,VLA,0.022750777363920047,0.007697975273329327,filtered,body outside its spheres
+sink_to_counter_s7,sink_to_counter,True,fixed,full,arm,sink,O(41),True,57,1030,VLA,0.003612091336372976,0.007988337082316457,filtered,body outside its spheres
+sink_to_counter_s7,sink_to_counter,True,fixed,look,hand,boxed drink,O(62),False,47,637,VLA,0.00028673869400558036,1.2968806274352338,passthrough,object not in the map
+sink_to_counter_s7,sink_to_counter,True,fixed,look,arm,counter,O(36),False,78,729,VLA,0.0032022874057292677,1.2981652153445653,passthrough,object not in the map
+sink_to_counter_s7,sink_to_counter,True,fixed,look,fingers,mug,O(65),False,74,961,VLA,-0.0008432118470933087,1.2422127300607246,passthrough,object not in the map
+sink_to_counter_s7,sink_to_counter,True,fixed,look,hand,mug,O(65),False,93,976,VLA,-0.001374101939814647,1.267299131768853,passthrough,object not in the map
+sink_to_counter_s7,sink_to_counter,True,noissf,full,arm,boxed drink,O(62),True,74,746,VLA,0.002609688491873076,0.0019541963236794843,passthrough,body outside its spheres
+sink_to_counter_s7,sink_to_counter,True,nominal,full,hand,boxed drink,O(62),True,41,637,VLA,0.0009548631889938555,-0.032815119870812065,passive,no filter
+sink_to_counter_s7,sink_to_counter,True,nominal,full,arm,counter,O(36),True,17,725,VLA,0.003050474375486348,-0.0917200490386805,passive,no filter
+sink_to_counter_s7,sink_to_counter,True,nominal,full,arm,sink,O(41),True,9,745,VLA,0.004003441680289377,-0.06252318398444802,passive,no filter
+sink_to_counter_s7,sink_to_counter,True,nominal,full,fingers,mug,O(65),True,56,930,VLA,-0.0005527642742469314,-0.04102320848944152,passive,no filter
+sink_to_counter_s7,sink_to_counter,True,nominal,full,hand,mug,O(65),True,41,937,VLA,-0.006121004953823011,-0.04911565761313099,passive,no filter
+sink_to_counter_s7,sink_to_counter,True,proposed,full,arm,boxed drink,O(62),True,47,796,VLA,0.021280072242303258,0.0073313016829263805,filtered,body outside its spheres
+sink_to_counter_s7,sink_to_counter,True,proposed,full,arm,sink,O(41),True,37,1454,VLA,0.00329169898286176,0.043908847929377326,passthrough,body outside its spheres
+sink_to_counter_s7,sink_to_counter,True,proposed,look,hand,boxed drink,O(62),False,51,639,VLA,0.0009824053644781616,1.255416314548036,passthrough,object not in the map
+sink_to_counter_s7,sink_to_counter,True,proposed,look,arm,counter,O(36),False,77,733,VLA,0.0031037013232707716,1.2566034948028195,passthrough,object not in the map
+sink_to_counter_s7,sink_to_counter,True,proposed,look,fingers,mug,O(65),False,101,962,VLA,-0.0001258948547449932,1.21697272279075,passthrough,object not in the map
+sink_to_counter_s7,sink_to_counter,True,proposed,look,hand,mug,O(65),False,26,965,VLA,-0.0022223740237264263,1.2202944185765765,passthrough,object not in the map

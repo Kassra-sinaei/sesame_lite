@@ -253,8 +253,8 @@ class SphereFilter:
         each row's pair (sphere, object)."""
         p = self.policy
         S, O = bar.h.shape
-        gc = bar.grad[..., COMMANDED].reshape(S * O, -1)
-        gk = bar.grad[..., KNOWN].reshape(S * O, -1)
+        gc, gk = bar.grad[..., COMMANDED], bar.grad[..., KNOWN]
+        gc, gk = gc.reshape(S * O, gc.shape[-1]), gk.reshape(S * O, gk.shape[-1])  # (also with no object at all: O = 0)
         b = p.alpha * bar.h.reshape(-1) + gk @ np.asarray(known_qdot, float) - p.eps * np.einsum("ij,ij->i", gc, gc)
         pairs = np.stack(np.unravel_index(np.arange(S * O), (S, O)), axis=1)
         keep = self.pair_mask.reshape(-1)

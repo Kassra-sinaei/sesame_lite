@@ -1,10 +1,11 @@
-"""The campaign lists of the stages (EVAL_SPEC.md, section 7) from outputs/eval/results/test_scenes.json.
+"""The campaign lists from outputs/eval/results/test_scenes.json (EVAL_SPEC.md, section 7; order of 2026-11-16).
 
     python scripts/eval_stages.py
 
-Stage 1: every method once on the full-pass map of one scene (the first test scene, in the order of the file, that no
-tuning round ran on). Stage 2: Nominal on the other scenes. Stage 3: Proposed on the other scenes. Stage 4: the three
-other methods on the other scenes, and the two look-around rows on all scenes.
+For the scenes of the Table II instructions (in_table2): table_main.txt (Nominal and Proposed on the full-pass map, scene by
+scene), table_baselines.txt (end-effector filter, fixed margin, Proposed without ISSf) and table_look.txt (fixed margin
+and Proposed on the look-around map). extra.txt: Nominal and Proposed on the scenes of the instructions that did not pass
+the screening rule (reported outside Table II).
 """
 
 import json
@@ -12,17 +13,17 @@ from pathlib import Path
 
 EVAL = Path(__file__).resolve().parents[1] / "outputs" / "eval"
 tests = json.loads((EVAL / "results" / "test_scenes.json").read_text())["test_scenes"]
-scenes = [t["scene"] for t in tests]
-first = next(t["scene"] for t in tests if not t["used_for_tuning"])
-others = [s for s in scenes if s != first]
+table = [t["scene"] for t in tests if t["in_table2"]]
+extra = [t["scene"] for t in tests if not t["in_table2"]]
 lists = {
-    "stage1": (f"every method once on the full-pass map of {first}", [f"{first} {m} full" for m in ("nominal", "ee", "fixed", "noissf", "proposed")]),
-    "stage2": ("Nominal on the other scenes", [f"{s} nominal full" for s in others]),
-    "stage3": ("Proposed on the other scenes", [f"{s} proposed full" for s in others]),
-    "stage4": ("end-effector filter, fixed margin and Proposed without ISSf on the other scenes; fixed margin and Proposed on the look-around map of all scenes",
-               [f"{s} {m} full" for m in ("ee", "fixed", "noissf") for s in others] + [f"{s} {m} look" for m in ("fixed", "proposed") for s in scenes]),
+    "table_main": ("Nominal and Proposed on the full-pass map", [f"{s} {m} full" for s in table for m in ("nominal", "proposed")]),
+    "table_baselines": ("end-effector filter, fixed margin and Proposed without ISSf on the full-pass map", [f"{s} {m} full" for m in ("ee", "fixed", "noissf") for s in table]),
+    "table_look": ("fixed margin and Proposed on the look-around map", [f"{s} {m} look" for m in ("fixed", "proposed") for s in table]),
+    "extra": ("Nominal and Proposed on the scenes of the instructions outside Table II", [f"{s} {m} full" for s in extra for m in ("nominal", "proposed")]),
 }
+for old in (EVAL / "campaigns").glob("stage*.txt"):
+    old.unlink()
 for name, (title, rows) in lists.items():
-    (EVAL / "campaigns" / f"{name}.txt").write_text(f"# {name} (EVAL_SPEC.md 7): {title}\n" + "".join(f"{r}\n" for r in rows))
+    (EVAL / "campaigns" / f"{name}.txt").write_text(f"# {title}\n" + "".join(f"{r}\n" for r in rows))
     print(name, len(rows))
-print("total", sum(len(r) for _, r in lists.values()), "runs on", len(scenes), "scenes")
+print("Table II:", len(table), "scenes,", 7 * len(table), "runs")

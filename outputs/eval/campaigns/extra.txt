@@ -1,0 +1,9 @@
+# Nominal and Proposed on the scenes of the instructions outside Table II
+open_drawer_s0 nominal full
+open_drawer_s0 proposed full
+open_drawer_s1 nominal full
+open_drawer_s1 proposed full
+open_drawer_s3 nominal full
+open_drawer_s3 proposed full
+open_drawer_s4 nominal full
+open_drawer_s4 proposed full

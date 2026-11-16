@@ -85,7 +85,7 @@ def admitted_after_labels(
 # Preregistered DEC-075 constants. Adjustable only on calibration
 # scenes/seeds, never on reported evaluation episodes.
 BETA_DEVIATION_BUDGET_M = 0.5
-RHO_V_VALIDITY_RADIUS_M = 1.0
+RHO_V_VALIDITY_RADIUS_M = 1.5  # 1.0 until 2026-11-16: the policy moves the base up to ~0.4 m while manipulating, and the arm then reaches ~1.45 m from the stop point
 DEFAULT_SAMPLE_SPACING_M = 0.05
 
 _SEGMENT_KINDS = ("NAVIGATION", "VLA")

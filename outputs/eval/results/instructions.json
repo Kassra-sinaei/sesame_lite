@@ -1,0 +1,61 @@
+{
+ "rule": "in Table II if the unfiltered policy succeeds in at least 3 of 6 screening scenes; at most 6, by screening successes, ties: first set first, then candidate order",
+ "screening": {
+  "open_drawer": {
+   "scenes": 6,
+   "success": 2
+  },
+  "close_fridge": {
+   "scenes": 6,
+   "success": 6
+  },
+  "close_cabinet": {
+   "scenes": 6,
+   "success": 4
+  },
+  "sink_to_counter": {
+   "scenes": 6,
+   "success": 6
+  },
+  "counter_to_sink": {
+   "scenes": 6,
+   "success": 3
+  },
+  "open_cabinet": {
+   "scenes": 6,
+   "success": 2
+  },
+  "slide_dishwasher_rack": {
+   "scenes": 6,
+   "success": 3
+  },
+  "counter_to_cabinet": {
+   "scenes": 6,
+   "success": 3
+  },
+  "counter_to_stove": {
+   "scenes": 6,
+   "success": 3
+  },
+  "stove_to_counter": {
+   "scenes": 6,
+   "success": 3
+  }
+ },
+ "table2": [
+  "close_fridge",
+  "close_cabinet",
+  "sink_to_counter",
+  "counter_to_cabinet",
+  "counter_to_stove",
+  "counter_to_sink"
+ ],
+ "passed_but_not_taken": [
+  "slide_dishwasher_rack",
+  "stove_to_counter"
+ ],
+ "not_passed": [
+  "open_drawer",
+  "open_cabinet"
+ ]
+}

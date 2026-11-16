@@ -1,0 +1,158 @@
+{
+ "what": "step 1 of the overnight plan (2026-11-16): Nominal and Proposed rerun on three of the 24 scenes with the stored maps and labels, code reverted to the first Table II version",
+ "scenes_rule": "the first test scene of each of the first three Table II instructions (instructions.json order)",
+ "runs": [
+  {
+   "attempt": "revert_check",
+   "scene": "close_cabinet_s3",
+   "method": "nominal",
+   "stored": {
+    "done": true,
+    "contact": false,
+    "steps": 716,
+    "contact_ticks": 0
+   },
+   "rerun": {
+    "done": true,
+    "contact": false,
+    "steps": 716,
+    "contact_ticks": 0
+   },
+   "match": true
+  },
+  {
+   "attempt": "revert_check",
+   "scene": "close_cabinet_s3",
+   "method": "proposed",
+   "stored": {
+    "done": true,
+    "contact": false,
+    "steps": 757,
+    "contact_ticks": 0
+   },
+   "rerun": {
+    "done": true,
+    "contact": false,
+    "steps": 757,
+    "contact_ticks": 0
+   },
+   "match": true
+  },
+  {
+   "attempt": "revert_check",
+   "scene": "close_fridge_s3",
+   "method": "nominal",
+   "stored": {
+    "done": true,
+    "contact": true,
+    "steps": 969,
+    "contact_ticks": 1
+   },
+   "rerun": {
+    "done": true,
+    "contact": true,
+    "steps": 1093,
+    "contact_ticks": 1
+   },
+   "match": true
+  },
+  {
+   "attempt": "revert_check",
+   "scene": "close_fridge_s3",
+   "method": "proposed",
+   "stored": {
+    "done": false,
+    "contact": false,
+    "steps": 1800,
+    "contact_ticks": 0
+   },
+   "rerun": {
+    "done": false,
+    "contact": true,
+    "steps": 1800,
+    "contact_ticks": 14
+   },
+   "match": false
+  },
+  {
+   "attempt": "revert_check",
+   "scene": "sink_to_counter_s0",
+   "method": "nominal",
+   "stored": {
+    "done": true,
+    "contact": false,
+    "steps": 964,
+    "contact_ticks": 0
+   },
+   "rerun": {
+    "done": true,
+    "contact": false,
+    "steps": 964,
+    "contact_ticks": 0
+   },
+   "match": true
+  },
+  {
+   "attempt": "revert_check",
+   "scene": "sink_to_counter_s0",
+   "method": "proposed",
+   "stored": {
+    "done": true,
+    "contact": false,
+    "steps": 969,
+    "contact_ticks": 0
+   },
+   "rerun": {
+    "done": true,
+    "contact": false,
+    "steps": 969,
+    "contact_ticks": 0
+   },
+   "match": true
+  },
+  {
+   "attempt": "revert_check_retry1",
+   "scene": "close_fridge_s3",
+   "method": "proposed",
+   "stored": {
+    "done": false,
+    "contact": false,
+    "steps": 1800,
+    "contact_ticks": 0
+   },
+   "rerun": {
+    "done": true,
+    "contact": false,
+    "steps": 843,
+    "contact_ticks": 0
+   },
+   "match": false
+  },
+  {
+   "attempt": "revert_check_retry2",
+   "scene": "close_fridge_s3",
+   "method": "proposed",
+   "stored": {
+    "done": false,
+    "contact": false,
+    "steps": 1800,
+    "contact_ticks": 0
+   },
+   "rerun": {
+    "done": true,
+    "contact": false,
+    "steps": 1167,
+    "contact_ticks": 0
+   },
+   "match": false
+  }
+ ],
+ "configuration": "identical in every rerun (policy constants, follower look-ahead, horizon, kitchen, snapshot, dropped pairs, admitted objects)",
+ "finding": "close_cabinet_s3 and sink_to_counter_s0 reproduce tick for tick. close_fridge_s3 does not: Nominal's joint state is identical for 600 ticks, then pi0.5 returns a slightly different action (max 0.0035) for the same input; Proposed differs from tick 349 by 1e-14 in the joint state, which grows. Runs are not bit-reproducible on the GPU, and close_fridge_s3 Proposed changed its outcome in all three reruns (stored: not done, no contact; reruns: not done with 14 contact ticks; done; done).",
+ "code_sha256": {
+  "src/sesame_lite/env.py": "2717baf06ca253b0115bef6f5274dd3f4b824b9a4a9f504d5e10e94c85aa39ab",
+  "src/sesame_lite/filter.py": "17cfe3e8e214aa1e775a7cb19d6745895cb7dbd59e78c244effb3f72bc1460c1",
+  "src/sesame_lite/eval_scene.py": "9e6550e6e2cf2a5dc240ea22422e2a58aee958e82e5e0e95f180e87d26977928",
+  "scripts/eval_run.py": "dd9d37afd465d992cf1f46f7d5d15c27d688a01b0ddb1fd387842e03c01621cf"
+ }
+}

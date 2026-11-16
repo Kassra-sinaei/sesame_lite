@@ -1,5 +1,5 @@
 """The language model's decisions of one scene and map kind, asked once before the campaign (EVAL_SPEC.md: all methods
-on the same scene; tuning_amendments.md A7): the object labels of both segments and the pairs to drop.
+on the same scene; tuning_amendments.md A7): the object labels of both segments (obstacle, passable or irrelevant).
 
     MUJOCO_GL=egl python -s scripts/eval_decide.py --scene close_fridge_s4 --map full
 
@@ -26,14 +26,16 @@ args = ap.parse_args()
 scene_dir = SCENES_DIR / args.scene
 scene = json.loads((scene_dir / "scene.json").read_text())
 base = SesameRoboCasaEnv(scene["task"], env_kwargs=dict(scene["env_kwargs"]), episode_length=scene["horizon"])
-env = EvalFilterEnv(base, map_kind=args.map, pair_pruning="model", classifier="qwen")
+env = EvalFilterEnv(base, map_kind=args.map, pair_pruning="rule", classifier="qwen")
 env.reset(scene_dir=scene_dir)  # the driving segment's labels
-env.begin_segment(1)  # the manipulation segment's labels and the pairs
+env.begin_segment(1)  # the manipulation segment's labels
 env.shared.store("complete", True)
-rep = env.pair_reply
 labels = {k: v for k, v in env.shared.load().items() if k.startswith("labels:")}
-print("DECIDED " + json.dumps({"scene": args.scene, "map": args.map, "pairs": sorted({f"{p['group']}>{p['category']}" for p in env.dropped_pairs}),
-                               "pair_reply_s": rep["latency_s"], "pair_error": rep["error"], "pairs_not_applied": rep["pairs_not_applied"],
-                               "label_requests": len(labels), "label_fallbacks": sum(bool(v["fallback_used"]) for v in labels.values()),
+counts = {}
+for v in labels.values():
+    for lab in v["labels"].values():
+        counts[lab] = counts.get(lab, 0) + 1
+print("DECIDED " + json.dumps({"scene": args.scene, "map": args.map, "allowed_for_the_gripper": sorted({f"{p['role']}:{p['category']}" for p in env.dropped_pairs}),
+                               "labels": counts, "label_requests": len(labels), "label_fallbacks": sum(bool(v["fallback_used"]) for v in labels.values()),
                                "label_s": [v["latency_s"] for v in labels.values()], "unmapped_task_objects": env.unmapped_roles}), flush=True)
 base.close()

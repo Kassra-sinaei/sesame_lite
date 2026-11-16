@@ -1,0 +1,311 @@
+{
+ "rule": "For sink_to_counter and counter_to_stove, in this order: the seeds after the last one considered in test_scenes.json;\na seed is taken if its kitchen is not in excluded_kitchens.json, not a screening kitchen, not the kitchen of a test\nscene or of an earlier replacement, and its scene could be built. The first 4 taken per instruction. Prints the seeds\nstill to prepare, or writes outputs/eval/results/test_scenes_a8.json. test_scenes.json is not changed.\n",
+ "replaced": [
+  "sink_to_counter_s0",
+  "sink_to_counter_s7",
+  "sink_to_counter_s11",
+  "sink_to_counter_s12",
+  "counter_to_stove_s0",
+  "counter_to_stove_s7",
+  "counter_to_stove_s9",
+  "counter_to_stove_s10"
+ ],
+ "test_scenes": [
+  {
+   "scene": "sink_to_counter_s16",
+   "instruction": "sink_to_counter",
+   "seed": 16,
+   "kitchen": [
+    39,
+    28
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": false
+  },
+  {
+   "scene": "sink_to_counter_s17",
+   "instruction": "sink_to_counter",
+   "seed": 17,
+   "kitchen": [
+    48,
+    13
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": false
+  },
+  {
+   "scene": "sink_to_counter_s18",
+   "instruction": "sink_to_counter",
+   "seed": 18,
+   "kitchen": [
+    55,
+    44
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": false
+  },
+  {
+   "scene": "sink_to_counter_s19",
+   "instruction": "sink_to_counter",
+   "seed": 19,
+   "kitchen": [
+    40,
+    33
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": false
+  },
+  {
+   "scene": "counter_to_stove_s14",
+   "instruction": "counter_to_stove",
+   "seed": 14,
+   "kitchen": [
+    42,
+    19
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": false
+  },
+  {
+   "scene": "counter_to_stove_s20",
+   "instruction": "counter_to_stove",
+   "seed": 20,
+   "kitchen": [
+    55,
+    41
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": false
+  },
+  {
+   "scene": "counter_to_stove_s21",
+   "instruction": "counter_to_stove",
+   "seed": 21,
+   "kitchen": [
+    26,
+    14
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": false
+  },
+  {
+   "scene": "counter_to_stove_s22",
+   "instruction": "counter_to_stove",
+   "seed": 22,
+   "kitchen": [
+    40,
+    44
+   ],
+   "taken": true,
+   "skipped_because": "",
+   "used_for_tuning": false,
+   "in_table2": false
+  }
+ ],
+ "considered": [
+  {
+   "instruction": "sink_to_counter",
+   "seed": 13,
+   "kitchen": [
+    55,
+    50
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "sink_to_counter",
+   "seed": 14,
+   "kitchen": [
+    18,
+    36
+   ],
+   "taken": false,
+   "skipped_because": "no path on the map with the clutter: no base path from [ 1.71 -5.83] to [ 2.14 -3.37] through the balls (inflation 0.35 m)"
+  },
+  {
+   "instruction": "sink_to_counter",
+   "seed": 15,
+   "kitchen": [
+    57,
+    39
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "sink_to_counter",
+   "seed": 16,
+   "kitchen": [
+    39,
+    28
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "sink_to_counter",
+   "seed": 17,
+   "kitchen": [
+    48,
+    13
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "sink_to_counter",
+   "seed": 18,
+   "kitchen": [
+    55,
+    44
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "sink_to_counter",
+   "seed": 19,
+   "kitchen": [
+    40,
+    33
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 11,
+   "kitchen": [
+    31,
+    54
+   ],
+   "taken": false,
+   "skipped_because": "no start place satisfies the start and floor-obstacle rules (51 tried)"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 12,
+   "kitchen": [
+    41,
+    42
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 13,
+   "kitchen": [
+    55,
+    50
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 14,
+   "kitchen": [
+    42,
+    19
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 15,
+   "kitchen": [
+    57,
+    39
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 16,
+   "kitchen": [
+    39,
+    28
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 17,
+   "kitchen": [
+    48,
+    13
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 18,
+   "kitchen": [
+    55,
+    44
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 19,
+   "kitchen": [
+    40,
+    33
+   ],
+   "taken": false,
+   "skipped_because": "kitchen taken earlier"
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 20,
+   "kitchen": [
+    55,
+    41
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 21,
+   "kitchen": [
+    26,
+    14
+   ],
+   "taken": true,
+   "skipped_because": ""
+  },
+  {
+   "instruction": "counter_to_stove",
+   "seed": 22,
+   "kitchen": [
+    40,
+    44
+   ],
+   "taken": true,
+   "skipped_because": ""
+  }
+ ]
+}

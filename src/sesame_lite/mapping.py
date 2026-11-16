@@ -508,11 +508,12 @@ def look_around_route(xy, params: MappingParams) -> list[tuple[np.ndarray, float
 
 
 def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: Path, *, seed: int, params: MappingParams = MappingParams(), look_from=None,
-              hide_bodies=()) -> Path:
+              hide_bodies=(), views_out: list | None = None) -> Path:
     """Mapping pass over the current kitchen state; writes the cache directory (see the module docstring).
     ``seed`` seeds the depth noise. ``look_from`` (x, y): the look-around map from that floor position instead of the
     full pass. ``hide_bodies``: MuJoCo bodies left out of the renders like the robot (the evaluation's map without
-    the clutter)."""
+    the clutter). ``views_out``: a list that receives what every frame saw (camera position, rotation, depth, labels),
+    for the map study."""
     from sesame_lite.uncertainty import write_points
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -556,4 +557,6 @@ def build_map(rs_env, oracle_graph: SceneGraph, lookup: OracleLookup, out_dir: P
     }
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=1))
     write_points(out_dir, views=views, params=params)
+    if views_out is not None:
+        views_out.extend(views)
     return out_dir
