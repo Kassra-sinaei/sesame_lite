@@ -47,7 +47,7 @@ import mujoco
 import numpy as np
 
 from sesame_lite.env import SafetyFilterEnv
-from sesame_lite.mapping import build_map, floor_test
+from sesame_lite.mapping import MappingParams, build_map, floor_test
 from sesame_lite.planner import NAVIGATION, VLA, NoPathError, Segment, plan_base_path, resolve_role, standoff_goal
 from sesame_lite.scene_graph import (COLLISION_GEOM_GROUP, HydraSceneGraph, IdBridge, _collision_geoms, _raw_data, _raw_model, _subtree_body_ids,
                                      capture_scene_graph, fixture_node_id, hydra_lookup)
@@ -109,6 +109,7 @@ def robot_group(name: str) -> str:
 BASE_JOINTS = ("mobilebase0_joint_mobile_forward", "mobilebase0_joint_mobile_side", "mobilebase0_joint_mobile_yaw")
 FLOOR_CLUTTER = ("clutter_floor_0", "clutter_floor_1", "clutter_floor_2")
 COUNTER_CLUTTER = ("clutter_counter_0", "clutter_counter_1", "clutter_counter_2")
+OBSTACLE_CANDIDATES = ("obstacle_0", "obstacle_1", "obstacle_2", "obstacle_3")  # tasks.EVAL_OBSTACLE_CATEGORIES
 
 
 class ScenePrepError(RuntimeError):
@@ -347,7 +348,7 @@ class _Prep:
         return int(hit[0]), RULE["counter_ray_from_z"] - float(dist)
 
     def _category(self, name: str) -> str:
-        cfg = next((c for c in self.rs.object_cfgs if c.get("name") == name), {})
+        cfg = next((c for c in list(self.rs.object_cfgs) + list(getattr(self.rs, "obstacle_cfgs", [])) if c.get("name") == name), {})
         return (cfg.get("info") or {}).get("cat") or getattr(self.rs.objects[name], "category", "")
 
 
@@ -359,7 +360,7 @@ def _load(cache: Path, oracle_graph, oracle_lookup, robot_pose, policy):
     return graph, bridge, lookup, balls
 
 
-def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Path, exclude: set[tuple[int, int]] = frozenset()) -> dict:
+def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Path, exclude: set[tuple[int, int]] = frozenset(), params: MappingParams | None = None) -> dict:
     """Build the scene of (instruction, seed) by the module's rules and write ``out_dir`` (raises ScenePrepError;
     a kitchen (layout, style) in ``exclude`` is not built)."""
     spec = INSTRUCTIONS[instruction]
@@ -378,7 +379,8 @@ def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Pa
     # 1. the map without the clutter, and the planning balls on it
     oracle0, lookup0 = capture_scene_graph(rs)
     hidden = set().union(*(c["bodies"] for c in prep.clutter.values()))
-    build_map(rs, oracle0, lookup0, out_dir / "map_plan", seed=seed, hide_bodies=hidden)
+    mp = {} if params is None else {"params": params}  # the maps' parameters (default: MappingParams())
+    build_map(rs, oracle0, lookup0, out_dir / "map_plan", seed=seed, hide_bodies=hidden, **mp)
     bp, R, _ = env.robot_pose()
     graph, bridge, lookup, balls = _load(out_dir / "map_plan", oracle0, lookup0, (bp, float(np.arctan2(R[1, 0], R[0, 0]))), env.policy)
     nav_oracle_name = fixture_node_id(rs, rs.init_robot_base_ref)
@@ -441,8 +443,8 @@ def prepare_scene(env: SafetyFilterEnv, instruction: str, seed: int, out_dir: Pa
 
     # 4. the final scene, its two maps and the record
     oracle, lookup_f = capture_scene_graph(rs)
-    build_map(rs, oracle, lookup_f, out_dir / "map_full", seed=seed)
-    build_map(rs, oracle, lookup_f, out_dir / "map_look", seed=seed, look_from=chosen["start"])
+    build_map(rs, oracle, lookup_f, out_dir / "map_full", seed=seed, **mp)
+    build_map(rs, oracle, lookup_f, out_dir / "map_look", seed=seed, look_from=chosen["start"], **mp)
     # the shared path: planned once on the full-pass map that contains the clutter (Kasra, 2026-11-13), two layers
     bp, R, _ = env.robot_pose()
     graph_f, _, _, balls_f = _load(out_dir / "map_full", oracle, lookup_f, (bp, float(np.arctan2(R[1, 0], R[0, 0]))), env.policy)
@@ -574,6 +576,8 @@ class EvalFilterEnv(SafetyFilterEnv):
             if self._classifier is not None:  # (filter off, Nominal: no object labels are needed)
                 self._classifier = self.shared
         self.oracle_graph, self.oracle_lookup = capture_scene_graph(self.rs)
+        ob = scene.get("safety_obstacle") or {}
+        self.obstacle_oracle = self.oracle_lookup.node_of.get(f"object:{ob['name']}") if ob.get("placed") else None
         cache = Path(scene_dir) / f"map_{self.map_kind}"
         for sid in (self.oracle_graph.snapshot_id, json.loads((cache / "meta.json").read_text())["oracle_snapshot_id"]):
             if sid != scene["snapshot_id"]:
@@ -823,6 +827,8 @@ class EvalFilterEnv(SafetyFilterEnv):
         g["contacts"] = sorted(f"{grp}|{o}" for grp, o in self.tick_contacts)  # every contact, exempt pairs included
         g["exempt_pair_contacts"] = sorted(f"{grp}|{o}" for grp, o in self.tick_exempt_contacts)
         g["contact_points"] = self.tick_contact_points  # counted contacts: robot group, object, world position
+        if getattr(self, "obstacle_oracle", None) is not None:  # true clearance of the robot's spheres to the safety obstacle
+            g["clearance_obstacle"] = self.true_geometry.clearance(_raw_data(self.rs.sim), bar.centres, bar.radii, {self.obstacle_oracle})[0]
 
     def summary(self, success: bool, stalled: bool) -> dict:
         out = super().summary(success, stalled)
@@ -842,4 +848,8 @@ class EvalFilterEnv(SafetyFilterEnv):
             contacts_by_pair={k: sum(k in g["contacts"] for g in gt) for k in sorted({k for g in gt for k in g["contacts"]})},
             exempt_contacts_by_pair={k: sum(k in g["exempt_pair_contacts"] for g in gt) for k in sorted({k for g in gt for k in g["exempt_pair_contacts"]})},
             snapshot_ok=self.oracle_graph.snapshot_id == self.scene["snapshot_id"])
+        ob = getattr(self, "obstacle_oracle", None)
+        out["safety_obstacle"] = None if ob is None else {
+            **self.scene["safety_obstacle"], "oracle_id": f"O:{ob}", "contact_ticks": sum(any(c.endswith(f"|O:{ob}") for c in g["contacts"]) for g in gt),
+            "clearance_min_m": min((g["clearance_obstacle"] for g in gt if g.get("clearance_obstacle") is not None), default=None)}
         return out

@@ -28,6 +28,9 @@ ap.add_argument("--policy", default="{}", help="as scripts/eval_run.py (tuning r
 ap.add_argument("--lookahead", default=None, help="as scripts/eval_run.py (tuning rounds only)")
 ap.add_argument("--scenes-root", default=None, help="as scripts/eval_run.py (tuning rounds only)")
 ap.add_argument("--horizon", default=None, help="as scripts/eval_run.py")
+ap.add_argument("--vla", default=None, help="as scripts/eval_run.py")
+ap.add_argument("--disturbance", default=None, help="as scripts/eval_run.py")
+ap.add_argument("--arm-kv", default=None, help="as scripts/eval_run.py")
 ap.add_argument("--video", default=None, help='as scripts/eval_run.py; "on" applies to the Proposed runs only')
 ap.add_argument("-j", type=int, default=3, help="processes at once (pi0.5 needs ~11 GB of GPU memory each)")
 args = ap.parse_args()
@@ -58,7 +61,7 @@ def run_one(run) -> str:
         t0 = time.time()
         with open(log, "a") as f:
             code = subprocess.call([sys.executable, "-s", str(REPO / "scripts" / "eval_run.py"), "--scene", scene, "--method", method, "--map", kind, "--policy", args.policy, *(["--tuning", args.tuning] if args.tuning else []), *(["--lookahead", args.lookahead] if args.lookahead else []), *(["--scenes-root", args.scenes_root] if args.scenes_root else []),
-                                   *(["--horizon", args.horizon] if args.horizon else []), *(["--video", args.video] if args.video and (args.video != "on" or method == "proposed") else [])],
+                                   *(["--horizon", args.horizon] if args.horizon else []), *(["--vla", args.vla] if args.vla else []), *(["--disturbance", args.disturbance] if args.disturbance else []), *(["--arm-kv", args.arm_kv] if args.arm_kv else []), *(["--video", args.video] if args.video and (args.video != "on" or method == "proposed") else [])],
                                    stdout=f, stderr=subprocess.STDOUT, cwd=REPO, env={**os.environ, "MUJOCO_GL": "egl"})
         if result_path(*run).exists():
             return f"finished      {' '.join(run)}  ({time.time() - t0:.0f} s)"

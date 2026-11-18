@@ -1,0 +1,24 @@
+{
+ "written": "2026-11-16, before any run of step 5",
+ "what": "step 5 of the overnight plan: the gap D of the designated safety obstacle, chosen on scenes outside the campaign",
+ "scenes": [
+  "counter_to_sink_s1000",
+  "sink_to_counter_s1000",
+  "close_fridge_s1001",
+  "sink_to_counter_s16",
+  "sink_to_counter_s17",
+  "counter_to_stove_s14",
+  "counter_to_stove_s20"
+ ],
+ "scenes_note": "The plan names counter_to_sink_s0, sink_to_counter_s0 and close_fridge_s4, but these are three of the 24 campaign scenes (test_scenes.json, used_for_tuning), while the step and the general rules say: non-campaign scenes only, nothing tuned on campaign scenes. They are replaced by the first screening scene of the same instruction with a scene file and runs (screening kitchens are never test kitchens): counter_to_sink_s1000, sink_to_counter_s1000, close_fridge_s1001 (close_fridge_s1000 could not be built). The extra kitchens of the two plate instructions: the first two of each in test_scenes_a8.json (sink_to_counter_s16, s17; counter_to_stove_s14, s20).",
+ "conditions": {
+  "none": "no obstacle",
+  "d12": "D = 0.12 m",
+  "d18": "D = 0.18 m"
+ },
+ "scene_build": "scripts/eval_obstacle.py on the scene (start, floor obstacles, counter objects unchanged), new full-pass map, path planned again; labels by Qwen per condition (scripts/eval_decide.py)",
+ "runs": "Proposed at none and at D = 0.12 first (the inputs of the rule); Nominal, and the runs at D = 0.18, only if they do not delay the campaign (they do not enter the rule)",
+ "finished": "the simulator's success check; a run that crashes is retried once, a run that crashes twice counts as not finished",
+ "rule": "D = 0.12 m if Proposed finishes at least as many of the 7 scenes with the obstacle at 0.12 m as with no obstacle; otherwise D = 0.18 m",
+ "a scene without an obstacle at 0.12": "stays in both counts (its run at 0.12 has no obstacle)"
+}

@@ -1,0 +1,13 @@
+scene,row,robot_group,object,geometry,ticks
+close_fridge_s3,Nominal,arm,fridge french door (fridgefrenchdoor_main_group_1),other mapped geometry,23
+close_fridge_s3,Nominal,arm,fridge french door (fridgefrenchdoor_main_group_1),unmapped geometry,21
+close_fridge_s3,Proposed,arm,fridge french door (fridgefrenchdoor_main_group_1),unmapped geometry,6
+close_fridge_s4,Nominal,arm,fridge french door (fridgefrenchdoor_main_group_1),other mapped geometry,21
+close_fridge_s4,Proposed,arm,fridge french door (fridgefrenchdoor_main_group_1),unmapped geometry,3
+close_fridge_s5,Nominal,base,basket (clutter_floor_1),unmapped geometry,92
+close_fridge_s5,Proposed,base,basket (clutter_floor_1),unmapped geometry,100
+close_cabinet_s3,Nominal,arm,coffee machine (coffee_machine_right_group_1),other mapped geometry,96
+close_cabinet_s3,Nominal,fingers,coffee machine (coffee_machine_right_group_1),other mapped geometry,97
+close_cabinet_s3,Nominal,fingers,hinge cabinet (hingecabinet_3_right_group_1),other mapped geometry,41
+close_cabinet_s3,Nominal,hand,coffee machine (coffee_machine_right_group_1),other mapped geometry,94
+close_cabinet_s3,Nominal,hand,hinge cabinet (hingecabinet_3_right_group_1),other mapped geometry,43

@@ -21,7 +21,7 @@ import numpy as np  # noqa: E402
 from sesame_lite.eval_scene import EVAL_DIR  # noqa: E402
 
 PLANS = ("close_fridge", "nav_clutter", "pick_place_far")
-OUT = EVAL_DIR / "design_maps"
+OUT = EVAL_DIR / "design_maps_v025"  # (the first campaign's 5 cm design maps: design_maps/)
 
 if sys.argv[1] == "--combine":
     parts = {p: json.loads((OUT / f"radii_{p}.json").read_text()) for p in PLANS}

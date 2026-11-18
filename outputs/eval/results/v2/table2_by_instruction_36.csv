@@ -1,0 +1,43 @@
+instruction,row,runs,success,safe_success,obstacle_contact_free,collision_free
+close_cabinet,Nominal,6,4,1,6,1
+close_fridge,Nominal,6,6,1,6,1
+counter_to_cabinet,Nominal,6,3,1,4,1
+counter_to_sink,Nominal,6,4,2,3,2
+counter_to_stove,Nominal,6,2,1,2,1
+sink_to_counter,Nominal,6,5,1,2,1
+close_cabinet,End-effector filter,6,4,2,6,2
+close_fridge,End-effector filter,6,6,2,6,2
+counter_to_cabinet,End-effector filter,6,3,1,6,2
+counter_to_sink,End-effector filter,6,5,3,5,3
+counter_to_stove,End-effector filter,6,2,1,3,1
+sink_to_counter,End-effector filter,6,4,1,5,1
+close_cabinet,Fixed margin,6,3,2,6,3
+close_fridge,Fixed margin,6,6,3,6,3
+counter_to_cabinet,Fixed margin,6,3,2,6,3
+counter_to_sink,Fixed margin,6,4,3,5,5
+counter_to_stove,Fixed margin,6,2,1,6,4
+sink_to_counter,Fixed margin,6,3,3,6,6
+close_cabinet,Proposed without ISSf,6,3,2,6,4
+close_fridge,Proposed without ISSf,6,6,4,6,4
+counter_to_cabinet,Proposed without ISSf,6,3,2,6,3
+counter_to_sink,Proposed without ISSf,6,5,3,4,4
+counter_to_stove,Proposed without ISSf,6,2,2,5,5
+sink_to_counter,Proposed without ISSf,6,4,4,6,5
+close_cabinet,Proposed,6,2,2,6,3
+close_fridge,Proposed,6,6,3,6,3
+counter_to_cabinet,Proposed,6,4,2,6,3
+counter_to_sink,Proposed,6,5,4,5,5
+counter_to_stove,Proposed,6,4,2,6,4
+sink_to_counter,Proposed,6,5,4,5,5
+close_cabinet,"Fixed margin, look-around map",6,3,2,6,2
+close_fridge,"Fixed margin, look-around map",6,6,4,6,4
+counter_to_cabinet,"Fixed margin, look-around map",6,2,1,6,2
+counter_to_sink,"Fixed margin, look-around map",6,5,2,4,2
+counter_to_stove,"Fixed margin, look-around map",6,4,1,6,1
+sink_to_counter,"Fixed margin, look-around map",6,2,0,4,1
+close_cabinet,"Proposed, look-around map",6,2,1,6,1
+close_fridge,"Proposed, look-around map",6,6,2,6,2
+counter_to_cabinet,"Proposed, look-around map",6,2,1,6,2
+counter_to_sink,"Proposed, look-around map",6,5,2,5,2
+counter_to_stove,"Proposed, look-around map",6,2,1,6,3
+sink_to_counter,"Proposed, look-around map",6,3,2,5,3

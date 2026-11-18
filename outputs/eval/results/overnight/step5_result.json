@@ -1,0 +1,758 @@
+{
+ "rule_sha256": "155ad936de806fd9375181dfef61d1d7f6c398c9729985e74be054a399a9f73b",
+ "proposed_finished": {
+  "none": 6,
+  "d12": 2
+ },
+ "chosen_gap_m": 0.18,
+ "runs": [
+  {
+   "condition": "none",
+   "scene": "counter_to_sink_s1000",
+   "done": true,
+   "contact_ticks": 0,
+   "obstacle_contact_ticks": null,
+   "obstacle_clearance_min_m": null,
+   "steps": 801
+  },
+  {
+   "condition": "none",
+   "scene": "sink_to_counter_s1000",
+   "done": true,
+   "contact_ticks": 0,
+   "obstacle_contact_ticks": null,
+   "obstacle_clearance_min_m": null,
+   "steps": 1283
+  },
+  {
+   "condition": "none",
+   "scene": "close_fridge_s1001",
+   "done": true,
+   "contact_ticks": 0,
+   "obstacle_contact_ticks": null,
+   "obstacle_clearance_min_m": null,
+   "steps": 949
+  },
+  {
+   "condition": "none",
+   "scene": "sink_to_counter_s16",
+   "done": true,
+   "contact_ticks": 0,
+   "obstacle_contact_ticks": null,
+   "obstacle_clearance_min_m": null,
+   "steps": 1323
+  },
+  {
+   "condition": "none",
+   "scene": "sink_to_counter_s17",
+   "done": true,
+   "contact_ticks": 0,
+   "obstacle_contact_ticks": null,
+   "obstacle_clearance_min_m": null,
+   "steps": 997
+  },
+  {
+   "condition": "none",
+   "scene": "counter_to_stove_s14",
+   "done": false,
+   "contact_ticks": 0,
+   "obstacle_contact_ticks": null,
+   "obstacle_clearance_min_m": null,
+   "steps": 1800
+  },
+  {
+   "condition": "none",
+   "scene": "counter_to_stove_s20",
+   "done": true,
+   "contact_ticks": 27,
+   "obstacle_contact_ticks": null,
+   "obstacle_clearance_min_m": null,
+   "steps": 930
+  },
+  {
+   "condition": "d12",
+   "scene": "counter_to_sink_s1000",
+   "done": true,
+   "contact_ticks": 0,
+   "obstacle_contact_ticks": 0,
+   "obstacle_clearance_min_m": 0.3557800495260861,
+   "steps": 777
+  },
+  {
+   "condition": "d12",
+   "scene": "sink_to_counter_s1000",
+   "done": false,
+   "contact_ticks": 30,
+   "obstacle_contact_ticks": 0,
+   "obstacle_clearance_min_m": 0.32312516577138706,
+   "steps": 1800
+  },
+  {
+   "condition": "d12",
+   "scene": "close_fridge_s1001",
+   "done": false,
+   "contact_ticks": 62,
+   "obstacle_contact_ticks": 0,
+   "obstacle_clearance_min_m": 0.22006696859198266,
+   "steps": 1800
+  },
+  {
+   "condition": "d12",
+   "scene": "sink_to_counter_s16",
+   "done": false,
+   "contact_ticks": 0,
+   "obstacle_contact_ticks": 0,
+   "obstacle_clearance_min_m": 0.39057105000705844,
+   "steps": 1800
+  },
+  {
+   "condition": "d12",
+   "scene": "sink_to_counter_s17",
+   "done": false,
+   "contact_ticks": 0,
+   "obstacle_contact_ticks": 0,
+   "obstacle_clearance_min_m": 0.3814342283880989,
+   "steps": 1800
+  },
+  {
+   "condition": "d12",
+   "scene": "counter_to_stove_s14",
+   "done": false,
+   "contact_ticks": 0,
+   "obstacle_contact_ticks": 0,
+   "obstacle_clearance_min_m": 0.44380912463811983,
+   "steps": 1800
+  },
+  {
+   "condition": "d12",
+   "scene": "counter_to_stove_s20",
+   "done": true,
+   "contact_ticks": 6,
+   "obstacle_contact_ticks": 0,
+   "obstacle_clearance_min_m": 0.1504233565257318,
+   "steps": 715
+  }
+ ],
+ "not_run": "Nominal at every condition and Proposed at D = 0.18 (they do not enter the rule; skipped so as not to delay the campaign)",
+ "obstacles": [
+  {
+   "scene": "close_fridge_s1001",
+   "gap_m": 0.12,
+   "same_kitchen": {
+    "kitchen": true,
+    "reference": "runs_first_campaign/close_fridge_s1001/nominal_full.json",
+    "nodes": 97,
+    "largest_shift_m": 5.127277374272765e-05,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "bottled_water",
+    "height_m": 0.158,
+    "support": "floor",
+    "side": "left",
+    "jitter_deg": -29.8,
+    "xy": [
+     5.8304,
+     -3.0994
+    ],
+    "gap_m": 0.12,
+    "gap_to_target_m": 0.12,
+    "gap_to_base_at_stop_m": 0.324,
+    "attempt": 3,
+    "tried": [
+     "boxed_drink right: 14 cm high",
+     "canned_food right: 9 cm high",
+     "bottled_water left: placed"
+    ],
+    "target": "handle"
+   },
+   "path_length_m": 5.896
+  },
+  {
+   "scene": "counter_to_sink_s1000",
+   "gap_m": 0.12,
+   "same_kitchen": {
+    "kitchen": true,
+    "reference": "runs_first_campaign/counter_to_sink_s1000/nominal_full.json",
+    "nodes": 98,
+    "largest_shift_m": 4.994506835931389e-05,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "condiment_bottle",
+    "height_m": 0.16,
+    "support": "counter",
+    "side": "behind",
+    "jitter_deg": 15.8,
+    "xy": [
+     2.0862,
+     -2.89
+    ],
+    "gap_m": 0.12,
+    "gap_to_target_m": 0.12,
+    "gap_to_base_at_stop_m": 0.725,
+    "attempt": 2,
+    "tried": [
+     "boxed_drink left: 14 cm high",
+     "condiment_bottle behind: placed"
+    ],
+    "target": "object"
+   },
+   "path_length_m": 6.829
+  },
+  {
+   "scene": "counter_to_stove_s14",
+   "gap_m": 0.12,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "bottled_water",
+    "height_m": 0.158,
+    "support": "counter",
+    "side": "right",
+    "jitter_deg": 19.7,
+    "xy": [
+     4.5835,
+     -2.8079
+    ],
+    "gap_m": 0.12,
+    "gap_to_target_m": 0.12,
+    "gap_to_base_at_stop_m": 0.664,
+    "attempt": 3,
+    "tried": [
+     "boxed_drink behind: 14 cm high",
+     "canned_food right: 6 cm high",
+     "bottled_water right: placed"
+    ],
+    "target": "object"
+   },
+   "path_length_m": 10.198
+  },
+  {
+   "scene": "counter_to_stove_s20",
+   "gap_m": 0.12,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "condiment_bottle",
+    "height_m": 0.16,
+    "support": "counter",
+    "side": "left",
+    "jitter_deg": -14.1,
+    "xy": [
+     4.8437,
+     -0.3762
+    ],
+    "gap_m": 0.12,
+    "gap_to_target_m": 0.12,
+    "gap_to_base_at_stop_m": 1.401,
+    "attempt": 14,
+    "tried": [
+     "canned_food behind: 2 cm high",
+     "condiment_bottle right: no level counter top",
+     "boxed_drink left: 14 cm high",
+     "canned_food right: 2 cm high",
+     "condiment_bottle right: no level counter top",
+     "boxed_drink right: 14 cm high",
+     "canned_food behind: 2 cm high",
+     "condiment_bottle behind: no level counter top",
+     "boxed_drink left: 14 cm high",
+     "canned_food behind: 2 cm high",
+     "condiment_bottle right: no level counter top",
+     "boxed_drink right: 14 cm high",
+     "canned_food left: 2 cm high",
+     "condiment_bottle left: placed"
+    ],
+    "target": "object"
+   },
+   "path_length_m": 5.576
+  },
+  {
+   "scene": "sink_to_counter_s1000",
+   "gap_m": 0.12,
+   "same_kitchen": {
+    "kitchen": true,
+    "reference": "runs_first_campaign/sink_to_counter_s1000/nominal_full.json",
+    "nodes": 93,
+    "largest_shift_m": 4.999356269835831e-05,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "bottled_water",
+    "height_m": 0.195,
+    "support": "counter",
+    "side": "behind",
+    "jitter_deg": 15.8,
+    "xy": [
+     1.8837,
+     -2.0295
+    ],
+    "gap_m": 0.12,
+    "gap_to_target_m": 0.12,
+    "gap_to_base_at_stop_m": 0.747,
+    "attempt": 2,
+    "tried": [
+     "boxed_food left: 8 cm high",
+     "bottled_water behind: placed"
+    ],
+    "target": "container"
+   },
+   "path_length_m": 7.393
+  },
+  {
+   "scene": "sink_to_counter_s16",
+   "gap_m": 0.12,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "bottled_water",
+    "height_m": 0.155,
+    "support": "counter",
+    "side": "right",
+    "jitter_deg": -5.0,
+    "xy": [
+     2.884,
+     -0.1108
+    ],
+    "gap_m": 0.12,
+    "gap_to_target_m": 0.12,
+    "gap_to_base_at_stop_m": 0.607,
+    "attempt": 4,
+    "tried": [
+     "bottled_water right: no level counter top",
+     "canned_food left: 9 cm high",
+     "boxed_drink left: 14 cm high",
+     "bottled_water right: placed"
+    ],
+    "target": "container"
+   },
+   "path_length_m": 10.367
+  },
+  {
+   "scene": "sink_to_counter_s17",
+   "gap_m": 0.12,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "bottled_water",
+    "height_m": 0.168,
+    "support": "counter",
+    "side": "right",
+    "jitter_deg": -24.9,
+    "xy": [
+     4.2883,
+     -2.0957
+    ],
+    "gap_m": 0.12,
+    "gap_to_target_m": 0.12,
+    "gap_to_base_at_stop_m": 0.438,
+    "attempt": 3,
+    "tried": [
+     "boxed_drink left: 9 cm high",
+     "canned_food behind: 6 cm high",
+     "bottled_water right: placed"
+    ],
+    "target": "container"
+   },
+   "path_length_m": 7.295
+  },
+  {
+   "scene": "close_fridge_s1001",
+   "gap_m": 0.18,
+   "same_kitchen": {
+    "kitchen": true,
+    "reference": "runs_first_campaign/close_fridge_s1001/nominal_full.json",
+    "nodes": 97,
+    "largest_shift_m": 5.127277374272765e-05,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "bottled_water",
+    "height_m": 0.158,
+    "support": "floor",
+    "side": "behind",
+    "jitter_deg": 13.3,
+    "xy": [
+     5.8813,
+     -3.2773
+    ],
+    "gap_m": 0.18,
+    "gap_to_target_m": 0.18,
+    "gap_to_base_at_stop_m": 0.412,
+    "attempt": 6,
+    "tried": [
+     "boxed_drink right: 14 cm high",
+     "canned_food right: 9 cm high",
+     "bottled_water left: it would touch another body",
+     "boxed_drink behind: 14 cm high",
+     "canned_food right: 9 cm high",
+     "bottled_water behind: placed"
+    ],
+    "target": "handle"
+   },
+   "path_length_m": 5.896
+  },
+  {
+   "scene": "counter_to_sink_s1000",
+   "gap_m": 0.18,
+   "same_kitchen": {
+    "kitchen": true,
+    "reference": "runs_first_campaign/counter_to_sink_s1000/nominal_full.json",
+    "nodes": 98,
+    "largest_shift_m": 4.994506835931389e-05,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "condiment_bottle",
+    "height_m": 0.16,
+    "support": "counter",
+    "side": "behind",
+    "jitter_deg": 15.8,
+    "xy": [
+     2.05,
+     -2.9381
+    ],
+    "gap_m": 0.18,
+    "gap_to_target_m": 0.18,
+    "gap_to_base_at_stop_m": 0.785,
+    "attempt": 2,
+    "tried": [
+     "boxed_drink left: 14 cm high",
+     "condiment_bottle behind: placed"
+    ],
+    "target": "object"
+   },
+   "path_length_m": 6.829
+  },
+  {
+   "scene": "counter_to_stove_s14",
+   "gap_m": 0.18,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "bottled_water",
+    "height_m": 0.158,
+    "support": "counter",
+    "side": "behind",
+    "jitter_deg": -19.8,
+    "xy": [
+     4.7662,
+     -2.8865
+    ],
+    "gap_m": 0.18,
+    "gap_to_target_m": 0.18,
+    "gap_to_base_at_stop_m": 0.797,
+    "attempt": 9,
+    "tried": [
+     "boxed_drink behind: 14 cm high",
+     "canned_food right: 6 cm high",
+     "bottled_water right: no level counter top",
+     "boxed_drink behind: 14 cm high",
+     "canned_food right: 6 cm high",
+     "bottled_water behind: no level counter top",
+     "boxed_drink right: 14 cm high",
+     "canned_food behind: 6 cm high",
+     "bottled_water behind: placed"
+    ],
+    "target": "object"
+   },
+   "path_length_m": 10.198
+  },
+  {
+   "scene": "counter_to_stove_s20",
+   "gap_m": 0.18,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "condiment_bottle",
+    "height_m": 0.16,
+    "support": "counter",
+    "side": "left",
+    "jitter_deg": -14.1,
+    "xy": [
+     4.8414,
+     -0.3162
+    ],
+    "gap_m": 0.18,
+    "gap_to_target_m": 0.18,
+    "gap_to_base_at_stop_m": 1.421,
+    "attempt": 14,
+    "tried": [
+     "canned_food behind: 2 cm high",
+     "condiment_bottle right: no level counter top",
+     "boxed_drink left: 14 cm high",
+     "canned_food right: 2 cm high",
+     "condiment_bottle right: no level counter top",
+     "boxed_drink right: 14 cm high",
+     "canned_food behind: 2 cm high",
+     "condiment_bottle behind: no level counter top",
+     "boxed_drink left: 14 cm high",
+     "canned_food behind: 2 cm high",
+     "condiment_bottle right: no level counter top",
+     "boxed_drink right: 14 cm high",
+     "canned_food left: 2 cm high",
+     "condiment_bottle left: placed"
+    ],
+    "target": "object"
+   },
+   "path_length_m": 5.576
+  },
+  {
+   "scene": "sink_to_counter_s1000",
+   "gap_m": 0.18,
+   "same_kitchen": {
+    "kitchen": true,
+    "reference": "runs_first_campaign/sink_to_counter_s1000/nominal_full.json",
+    "nodes": 93,
+    "largest_shift_m": 4.999356269835831e-05,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "bottled_water",
+    "height_m": 0.195,
+    "support": "counter",
+    "side": "behind",
+    "jitter_deg": 15.8,
+    "xy": [
+     1.833,
+     -1.9935
+    ],
+    "gap_m": 0.18,
+    "gap_to_target_m": 0.18,
+    "gap_to_base_at_stop_m": 0.809,
+    "attempt": 2,
+    "tried": [
+     "boxed_food left: 8 cm high",
+     "bottled_water behind: placed"
+    ],
+    "target": "container"
+   },
+   "path_length_m": 7.393
+  },
+  {
+   "scene": "sink_to_counter_s16",
+   "gap_m": 0.18,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "bottled_water",
+    "height_m": 0.155,
+    "support": "counter",
+    "side": "behind",
+    "jitter_deg": -5.0,
+    "xy": [
+     2.3463,
+     -0.0788
+    ],
+    "gap_m": 0.18,
+    "gap_to_target_m": 0.18,
+    "gap_to_base_at_stop_m": 0.91,
+    "attempt": 7,
+    "tried": [
+     "bottled_water right: no level counter top",
+     "canned_food left: 9 cm high",
+     "boxed_drink left: 14 cm high",
+     "bottled_water right: no level counter top",
+     "canned_food right: 9 cm high",
+     "boxed_drink right: 14 cm high",
+     "bottled_water behind: placed"
+    ],
+    "target": "container"
+   },
+   "path_length_m": 10.367
+  },
+  {
+   "scene": "sink_to_counter_s17",
+   "gap_m": 0.18,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": true,
+    "name": "safety_obstacle_0",
+    "category": "bottled_water",
+    "height_m": 0.168,
+    "support": "counter",
+    "side": "right",
+    "jitter_deg": -24.9,
+    "xy": [
+     4.3195,
+     -2.1548
+    ],
+    "gap_m": 0.18,
+    "gap_to_target_m": 0.18,
+    "gap_to_base_at_stop_m": 0.467,
+    "attempt": 3,
+    "tried": [
+     "boxed_drink left: 9 cm high",
+     "canned_food behind: 6 cm high",
+     "bottled_water right: placed"
+    ],
+    "target": "container"
+   },
+   "path_length_m": 7.295
+  },
+  {
+   "scene": "close_fridge_s1001",
+   "gap_m": null,
+   "same_kitchen": {
+    "kitchen": true,
+    "reference": "runs_first_campaign/close_fridge_s1001/nominal_full.json",
+    "nodes": 97,
+    "largest_shift_m": 5.127277374272765e-05,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": false,
+    "reason": "no obstacle in this condition"
+   },
+   "path_length_m": 5.896
+  },
+  {
+   "scene": "counter_to_sink_s1000",
+   "gap_m": null,
+   "same_kitchen": {
+    "kitchen": true,
+    "reference": "runs_first_campaign/counter_to_sink_s1000/nominal_full.json",
+    "nodes": 98,
+    "largest_shift_m": 4.994506835931389e-05,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": false,
+    "reason": "no obstacle in this condition"
+   },
+   "path_length_m": 6.829
+  },
+  {
+   "scene": "counter_to_stove_s14",
+   "gap_m": null,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": false,
+    "reason": "no obstacle in this condition"
+   },
+   "path_length_m": 10.198
+  },
+  {
+   "scene": "counter_to_stove_s20",
+   "gap_m": null,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": false,
+    "reason": "no obstacle in this condition"
+   },
+   "path_length_m": 5.576
+  },
+  {
+   "scene": "sink_to_counter_s1000",
+   "gap_m": null,
+   "same_kitchen": {
+    "kitchen": true,
+    "reference": "runs_first_campaign/sink_to_counter_s1000/nominal_full.json",
+    "nodes": 93,
+    "largest_shift_m": 4.999356269835831e-05,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": false,
+    "reason": "no obstacle in this condition"
+   },
+   "path_length_m": 7.393
+  },
+  {
+   "scene": "sink_to_counter_s16",
+   "gap_m": null,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": false,
+    "reason": "no obstacle in this condition"
+   },
+   "path_length_m": 10.367
+  },
+  {
+   "scene": "sink_to_counter_s17",
+   "gap_m": null,
+   "same_kitchen": {
+    "kitchen": true,
+    "ok": true
+   },
+   "status": "ok",
+   "obstacle": {
+    "placed": false,
+    "reason": "no obstacle in this condition"
+   },
+   "path_length_m": 7.295
+  }
+ ]
+}

@@ -1,0 +1,5 @@
+instruction,row,runs,success,obstacle_contact_free,collision_free
+close_cabinet,Nominal,1,0,1,0
+close_fridge,Nominal,4,2,4,1
+close_cabinet,Proposed,1,1,1,1
+close_fridge,Proposed,4,2,4,1

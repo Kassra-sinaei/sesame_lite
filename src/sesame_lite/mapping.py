@@ -49,7 +49,7 @@ class MappingParams:
     fovy_deg: float = 58.0
     min_range_m: float = 0.3
     max_range_m: float = 4.0
-    voxel_size_m: float = 0.05
+    voxel_size_m: float = 0.025  # 2.5 cm since 2026-11-17 (Kasra; the first campaign used 0.05)
     truncation_voxels: int = 3
     max_weight: float = 1.0e7
     bounding_box_type: str = "OBB"

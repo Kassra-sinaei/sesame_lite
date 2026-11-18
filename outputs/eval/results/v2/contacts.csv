@@ -1,0 +1,302 @@
+scene,row,robot_group,object,geometry,ticks
+close_fridge_s3,Nominal,arm,fridge french door (fridgefrenchdoor_main_group_1),other mapped geometry,9
+close_fridge_s3,End-effector filter,arm,fridge french door (fridgefrenchdoor_main_group_1),unmapped geometry,7
+close_fridge_s3,Fixed margin,arm,fridge french door (fridgefrenchdoor_main_group_1),unmapped geometry,182
+close_fridge_s3,Proposed,arm,fridge french door (fridgefrenchdoor_main_group_1),unmapped geometry,3
+close_fridge_s3,"Fixed margin, look-around map",arm,fridge french door (fridgefrenchdoor_main_group_1),unmapped geometry,7
+close_fridge_s3,"Proposed, look-around map",arm,fridge french door (fridgefrenchdoor_main_group_1),unmapped geometry,15
+close_fridge_s4,Nominal,arm,fridge french door (fridgefrenchdoor_main_group_1),unmapped geometry,34
+close_fridge_s4,End-effector filter,arm,fridge french door (fridgefrenchdoor_main_group_1),unmapped geometry,7
+close_fridge_s5,Nominal,base,basket (clutter_floor_1),unmapped geometry,231
+close_fridge_s5,End-effector filter,base,basket (clutter_floor_1),unmapped geometry,249
+close_fridge_s5,Fixed margin,base,basket (clutter_floor_1),unmapped geometry,239
+close_fridge_s5,Proposed without ISSf,base,basket (clutter_floor_1),unmapped geometry,250
+close_fridge_s5,Proposed,base,basket (clutter_floor_1),unmapped geometry,250
+close_fridge_s5,"Fixed margin, look-around map",base,basket (clutter_floor_1),other mapped geometry,2
+close_fridge_s5,"Fixed margin, look-around map",base,basket (clutter_floor_1),unmapped geometry,31
+close_fridge_s5,"Proposed, look-around map",base,basket (clutter_floor_1),unmapped geometry,19
+close_fridge_s6,Nominal,arm,fridge french door (fridgefrenchdoor_right_group_1),unmapped geometry,7
+close_fridge_s6,Fixed margin,arm,fridge french door (fridgefrenchdoor_right_group_1),unmapped geometry,7
+close_fridge_s6,Proposed without ISSf,arm,fridge french door (fridgefrenchdoor_right_group_1),unmapped geometry,8
+close_fridge_s6,Proposed,arm,fridge french door (fridgefrenchdoor_right_group_1),unmapped geometry,8
+close_fridge_s6,"Proposed, look-around map",arm,fridge french door (fridgefrenchdoor_right_group_1),unmapped geometry,160
+close_cabinet_s3,"Proposed, look-around map",base,single cabinet (stack_03_main_group_1_1),unmapped geometry,6
+close_cabinet_s3,"Proposed, look-around map",base,single cabinet (stack_04_right_group_1_1),unmapped geometry,7
+close_cabinet_s3,"Proposed, look-around map",hand,coffee machine (coffee_machine_right_group_1),unmapped geometry,14
+close_cabinet_s7,Nominal,fingers,single cabinet (stack_03_main_group_1_1),other mapped geometry,8
+close_cabinet_s7,Nominal,hand,single cabinet (stack_03_main_group_1_1),other mapped geometry,1
+close_cabinet_s8,Nominal,base,basket (clutter_floor_1),other mapped geometry,4
+close_cabinet_s8,Nominal,base,basket (clutter_floor_1),unmapped geometry,2
+close_cabinet_s8,End-effector filter,base,basket (clutter_floor_1),other mapped geometry,4
+close_cabinet_s8,End-effector filter,base,basket (clutter_floor_1),unmapped geometry,2
+close_cabinet_s8,Fixed margin,arm,cereal (distr_counter_3),other mapped geometry,2
+close_cabinet_s8,Fixed margin,arm,single cabinet (singlecabinet_03_main_group_1),unmapped geometry,2
+close_cabinet_s8,Fixed margin,base,basket (clutter_floor_1),unmapped geometry,19
+close_cabinet_s8,Fixed margin,base,wall (wall_main_2_room),other mapped geometry,1
+close_cabinet_s8,"Fixed margin, look-around map",arm,single cabinet (singlecabinet_03_main_group_1),unmapped geometry,3
+close_cabinet_s8,"Proposed, look-around map",fingers,counter (counter_3_main_group_1),unmapped geometry,6
+close_cabinet_s9,Nominal,arm,hood (widestove_hood_right_group_1),other mapped geometry,2
+close_cabinet_s9,Nominal,arm,single cabinet (singlecabinet_3_right_group_1),unmapped geometry,13
+close_cabinet_s9,Nominal,base,boxed food (clutter_floor_2),other mapped geometry,4
+close_cabinet_s9,Nominal,base,boxed food (clutter_floor_2),unmapped geometry,44
+close_cabinet_s9,Nominal,base,stove (widestove_right_group_1),other mapped geometry,24
+close_cabinet_s9,End-effector filter,arm,single cabinet (singlecabinet_3_right_group_1),unmapped geometry,4
+close_cabinet_s9,End-effector filter,base,boxed food (clutter_floor_2),other mapped geometry,4
+close_cabinet_s9,End-effector filter,base,boxed food (clutter_floor_2),unmapped geometry,44
+close_cabinet_s9,End-effector filter,base,single cabinet (stack_1_right_group_1_1),other mapped geometry,20
+close_cabinet_s9,End-effector filter,base,stove (widestove_right_group_1),other mapped geometry,15
+close_cabinet_s9,End-effector filter,base,stove (widestove_right_group_1),unmapped geometry,2
+close_cabinet_s9,End-effector filter,fingers,wall (wall_main_2_room),other mapped geometry,39
+close_cabinet_s9,Proposed,fingers,wall (wall_left_1_room),other mapped geometry,3
+close_cabinet_s9,Proposed,fingers,wall (wall_main_2_room),other mapped geometry,2
+close_cabinet_s9,Proposed,fingers,wall (wall_main_2_room),unmapped geometry,48
+close_cabinet_s9,Proposed,hand,wall (wall_left_1_room),other mapped geometry,56
+close_cabinet_s9,Proposed,hand,wall (wall_left_1_room),unmapped geometry,2
+close_cabinet_s9,Proposed,hand,wall (wall_main_2_room),other mapped geometry,8
+close_cabinet_s9,Proposed,hand,wall (wall_main_2_room),unmapped geometry,18
+close_cabinet_s9,"Fixed margin, look-around map",arm,single cabinet (singlecabinet_3_right_group_1),unmapped geometry,5
+close_cabinet_s9,"Fixed margin, look-around map",base,box (stack_4_island_group_1_base),unmapped geometry,31
+close_cabinet_s9,"Fixed margin, look-around map",base,hinge cabinet (stack_4_island_group_1_1),unmapped geometry,31
+close_cabinet_s9,"Proposed, look-around map",arm,single cabinet (singlecabinet_3_right_group_1),unmapped geometry,17
+close_cabinet_s9,"Proposed, look-around map",base,hinge cabinet (stack_2_main_group_1_1),unmapped geometry,170
+sink_to_counter_s0,End-effector filter,arm,counter (counter_1_main_group_1),other mapped geometry,3
+sink_to_counter_s0,End-effector filter,arm,mug (clutter_counter_0),other mapped geometry,3
+sink_to_counter_s0,"Fixed margin, look-around map",arm,sink (sink_main_group_1),unmapped geometry,17
+sink_to_counter_s7,Nominal,fingers,boxed drink (clutter_counter_2),other mapped geometry,5
+sink_to_counter_s7,Nominal,fingers,boxed drink (clutter_counter_2),unmapped geometry,87
+sink_to_counter_s7,Nominal,fingers,mug (clutter_counter_1),other mapped geometry,19
+sink_to_counter_s7,Nominal,fingers,mug (clutter_counter_1),unmapped geometry,84
+sink_to_counter_s7,Nominal,fingers,unknown (obstacle_0),designated obstacle,121
+sink_to_counter_s7,Nominal,hand,boxed drink (clutter_counter_2),other mapped geometry,2
+sink_to_counter_s7,Nominal,hand,mug (clutter_counter_1),unmapped geometry,93
+sink_to_counter_s7,Nominal,hand,unknown (obstacle_0),designated obstacle,94
+sink_to_counter_s7,End-effector filter,arm,mug (clutter_counter_1),other mapped geometry,34
+sink_to_counter_s7,End-effector filter,arm,sink (sink_main_group_1),other mapped geometry,10
+sink_to_counter_s7,End-effector filter,fingers,mug (clutter_counter_1),unmapped geometry,19
+sink_to_counter_s7,Proposed without ISSf,fingers,mug (clutter_counter_1),unmapped geometry,20
+sink_to_counter_s7,Proposed without ISSf,hand,mug (clutter_counter_1),unmapped geometry,23
+sink_to_counter_s7,"Fixed margin, look-around map",arm,boxed drink (clutter_counter_2),unmapped geometry,23
+sink_to_counter_s7,"Fixed margin, look-around map",arm,mug (clutter_counter_1),unmapped geometry,21
+sink_to_counter_s7,"Fixed margin, look-around map",arm,sink (sink_main_group_1),unmapped geometry,48
+sink_to_counter_s7,"Fixed margin, look-around map",base,boxed drink (clutter_counter_2),unmapped geometry,19
+sink_to_counter_s7,"Fixed margin, look-around map",base,hinge cabinet (stack_02_main_group_1_1),unmapped geometry,13
+sink_to_counter_s7,"Fixed margin, look-around map",fingers,mug (clutter_counter_1),unmapped geometry,81
+sink_to_counter_s7,"Fixed margin, look-around map",fingers,unknown (obstacle_0),designated obstacle,97
+sink_to_counter_s7,"Fixed margin, look-around map",hand,mug (clutter_counter_1),unmapped geometry,42
+sink_to_counter_s7,"Fixed margin, look-around map",hand,unknown (obstacle_0),designated obstacle,94
+sink_to_counter_s7,"Proposed, look-around map",arm,boxed drink (clutter_counter_2),unmapped geometry,10
+sink_to_counter_s7,"Proposed, look-around map",fingers,boxed drink (clutter_counter_2),unmapped geometry,99
+sink_to_counter_s7,"Proposed, look-around map",fingers,mug (clutter_counter_1),unmapped geometry,117
+sink_to_counter_s7,"Proposed, look-around map",fingers,unknown (obstacle_0),designated obstacle,276
+sink_to_counter_s7,"Proposed, look-around map",hand,boxed drink (clutter_counter_2),unmapped geometry,2
+sink_to_counter_s7,"Proposed, look-around map",hand,mug (clutter_counter_1),unmapped geometry,39
+sink_to_counter_s7,"Proposed, look-around map",hand,unknown (obstacle_0),designated obstacle,174
+sink_to_counter_s11,Nominal,fingers,mug (clutter_counter_0),other mapped geometry,18
+sink_to_counter_s11,Nominal,fingers,mug (clutter_counter_0),unmapped geometry,112
+sink_to_counter_s11,Nominal,fingers,unknown (obstacle_3),designated obstacle,122
+sink_to_counter_s11,Nominal,hand,mug (clutter_counter_0),other mapped geometry,22
+sink_to_counter_s11,Nominal,hand,mug (clutter_counter_0),unmapped geometry,111
+sink_to_counter_s11,Nominal,hand,unknown (obstacle_3),designated obstacle,41
+sink_to_counter_s11,End-effector filter,arm,boxed drink (clutter_counter_1),other mapped geometry,2
+sink_to_counter_s11,End-effector filter,arm,sink (sink_1_right_group_1),other mapped geometry,14
+sink_to_counter_s11,End-effector filter,fingers,unknown (obstacle_3),designated obstacle,92
+sink_to_counter_s11,End-effector filter,hand,unknown (obstacle_3),designated obstacle,28
+sink_to_counter_s11,Proposed,fingers,unknown (obstacle_3),designated obstacle,86
+sink_to_counter_s11,Proposed,hand,unknown (obstacle_3),designated obstacle,11
+sink_to_counter_s11,"Fixed margin, look-around map",arm,sink (sink_1_right_group_1),unmapped geometry,3
+sink_to_counter_s11,"Fixed margin, look-around map",fingers,mug (clutter_counter_0),unmapped geometry,54
+sink_to_counter_s11,"Fixed margin, look-around map",fingers,unknown (obstacle_3),designated obstacle,243
+sink_to_counter_s11,"Fixed margin, look-around map",hand,mug (clutter_counter_0),unmapped geometry,34
+sink_to_counter_s11,"Fixed margin, look-around map",hand,unknown (obstacle_3),designated obstacle,28
+sink_to_counter_s12,Nominal,base,single cabinet (stack_5_island_group_2_1),other mapped geometry,8
+sink_to_counter_s12,End-effector filter,base,single cabinet (stack_5_island_group_2_1),other mapped geometry,8
+sink_to_counter_s12,"Fixed margin, look-around map",base,single cabinet (stack_5_island_group_2_1),unmapped geometry,8
+sink_to_counter_s12,"Proposed, look-around map",base,single cabinet (stack_5_island_group_2_1),unmapped geometry,8
+counter_to_cabinet_s3,Nominal,base,box (cube_1_island_group_1),other mapped geometry,10
+counter_to_cabinet_s3,Nominal,base,stove (widestove_main_group_1),other mapped geometry,6
+counter_to_cabinet_s3,End-effector filter,arm,single cabinet (singlecabinet_2_main_group_1),other mapped geometry,1
+counter_to_cabinet_s3,End-effector filter,base,box (cube_1_island_group_1),other mapped geometry,10
+counter_to_cabinet_s3,End-effector filter,base,stove (widestove_main_group_1),other mapped geometry,6
+counter_to_cabinet_s3,"Fixed margin, look-around map",base,box (cube_1_island_group_1),unmapped geometry,10
+counter_to_cabinet_s3,"Fixed margin, look-around map",base,stove (widestove_main_group_1),unmapped geometry,6
+counter_to_cabinet_s3,"Proposed, look-around map",base,box (cube_1_island_group_1),unmapped geometry,10
+counter_to_cabinet_s3,"Proposed, look-around map",base,stove (widestove_main_group_1),unmapped geometry,6
+counter_to_cabinet_s10,Nominal,arm,counter (counter_2_main_group_1),other mapped geometry,10
+counter_to_cabinet_s10,Nominal,arm,hinge cabinet (hingecabinet_3_main_group_1),other mapped geometry,6
+counter_to_cabinet_s10,Nominal,arm,hinge cabinet (hingecabinet_3_main_group_1),unmapped geometry,1
+counter_to_cabinet_s10,Nominal,arm,jug (obj),other mapped geometry,17
+counter_to_cabinet_s10,Nominal,arm,toaster (toaster_main_group_1),other mapped geometry,27
+counter_to_cabinet_s10,Nominal,arm,toaster (toaster_main_group_1),unmapped geometry,21
+counter_to_cabinet_s10,Nominal,base,box (cube_2_dining_area_group),other mapped geometry,1
+counter_to_cabinet_s10,Nominal,base,single cabinet (stack_05_right_group_1_1),other mapped geometry,77
+counter_to_cabinet_s10,Nominal,fingers,bottled water (clutter_counter_1),other mapped geometry,8
+counter_to_cabinet_s10,Nominal,fingers,bottled water (clutter_counter_1),unmapped geometry,1
+counter_to_cabinet_s10,Nominal,fingers,bottled water (clutter_counter_2),other mapped geometry,21
+counter_to_cabinet_s10,Nominal,fingers,bottled water (clutter_counter_2),unmapped geometry,139
+counter_to_cabinet_s10,Nominal,fingers,canned food (distr_counter),other mapped geometry,9
+counter_to_cabinet_s10,Nominal,fingers,canned food (distr_counter),unmapped geometry,4
+counter_to_cabinet_s10,Nominal,fingers,unknown (obstacle_2),designated obstacle,11
+counter_to_cabinet_s10,Nominal,hand,bottled water (clutter_counter_1),other mapped geometry,23
+counter_to_cabinet_s10,Nominal,hand,bottled water (clutter_counter_2),other mapped geometry,15
+counter_to_cabinet_s10,Nominal,hand,bottled water (clutter_counter_2),unmapped geometry,137
+counter_to_cabinet_s10,Nominal,hand,canned food (distr_counter),other mapped geometry,4
+counter_to_cabinet_s10,Nominal,hand,canned food (distr_counter),unmapped geometry,6
+counter_to_cabinet_s10,Nominal,hand,toaster (toaster_main_group_1),other mapped geometry,64
+counter_to_cabinet_s10,Nominal,hand,toaster (toaster_main_group_1),unmapped geometry,14
+counter_to_cabinet_s10,Nominal,hand,unknown (obstacle_2),designated obstacle,1
+counter_to_cabinet_s10,End-effector filter,arm,counter (counter_1_right_group_1),other mapped geometry,1
+counter_to_cabinet_s10,End-effector filter,base,box (cube_2_dining_area_group),other mapped geometry,1
+counter_to_cabinet_s10,End-effector filter,base,hinge cabinet (stack_07_right_group_1_1),other mapped geometry,69
+counter_to_cabinet_s10,End-effector filter,base,single cabinet (stack_05_right_group_1_1),other mapped geometry,232
+counter_to_cabinet_s10,End-effector filter,fingers,counter (counter_1_right_group_1),other mapped geometry,21
+counter_to_cabinet_s10,End-effector filter,hand,counter (counter_1_right_group_1),other mapped geometry,168
+counter_to_cabinet_s10,Fixed margin,fingers,counter (counter_1_right_group_1),other mapped geometry,32
+counter_to_cabinet_s10,Fixed margin,fingers,counter (counter_corner_1_main_group_1),other mapped geometry,11
+counter_to_cabinet_s10,Fixed margin,hand,counter (counter_1_right_group_1),other mapped geometry,99
+counter_to_cabinet_s10,Proposed without ISSf,hand,counter (counter_1_right_group_1),other mapped geometry,31
+counter_to_cabinet_s10,Proposed,hand,counter (counter_1_right_group_1),other mapped geometry,159
+counter_to_cabinet_s10,"Fixed margin, look-around map",hand,counter (counter_1_right_group_1),other mapped geometry,39
+counter_to_cabinet_s10,"Fixed margin, look-around map",hand,counter (counter_corner_1_main_group_1),other mapped geometry,3
+counter_to_cabinet_s10,"Proposed, look-around map",hand,counter (counter_1_right_group_1),other mapped geometry,9
+counter_to_cabinet_s13,Nominal,arm,single cabinet (singlecabinet_2_main_group_1),other mapped geometry,1
+counter_to_cabinet_s13,Nominal,base,boxed food (clutter_floor_2),other mapped geometry,3
+counter_to_cabinet_s13,Nominal,base,boxed food (clutter_floor_2),unmapped geometry,20
+counter_to_cabinet_s13,Nominal,base,fridge bottom freezer (fridgebottomfreezer_main_group_1),other mapped geometry,7
+counter_to_cabinet_s13,End-effector filter,arm,single cabinet (singlecabinet_2_main_group_1),other mapped geometry,5
+counter_to_cabinet_s13,End-effector filter,base,basket (clutter_floor_1),unmapped geometry,42
+counter_to_cabinet_s13,End-effector filter,base,boxed food (clutter_floor_2),other mapped geometry,3
+counter_to_cabinet_s13,End-effector filter,base,boxed food (clutter_floor_2),unmapped geometry,22
+counter_to_cabinet_s13,End-effector filter,base,fridge bottom freezer (fridgebottomfreezer_main_group_1),other mapped geometry,30
+counter_to_cabinet_s13,Fixed margin,base,basket (clutter_floor_1),unmapped geometry,96
+counter_to_cabinet_s13,Proposed without ISSf,base,basket (clutter_floor_1),unmapped geometry,155
+counter_to_cabinet_s13,Proposed without ISSf,base,fridge bottom freezer (fridgebottomfreezer_main_group_1),other mapped geometry,8
+counter_to_cabinet_s13,Proposed without ISSf,base,fridge bottom freezer (fridgebottomfreezer_main_group_1),unmapped geometry,5
+counter_to_cabinet_s13,Proposed,base,basket (clutter_floor_1),unmapped geometry,275
+counter_to_cabinet_s13,Proposed,base,fridge bottom freezer (fridgebottomfreezer_main_group_1),other mapped geometry,1
+counter_to_cabinet_s13,"Fixed margin, look-around map",base,basket (clutter_floor_1),unmapped geometry,20
+counter_to_cabinet_s13,"Fixed margin, look-around map",base,box (cube_8_island_group_1),other mapped geometry,18
+counter_to_cabinet_s13,"Fixed margin, look-around map",base,dishwasher (dishwasher_1_main_group_1),other mapped geometry,8
+counter_to_cabinet_s13,"Fixed margin, look-around map",base,flour bag (clutter_floor_0),other mapped geometry,6
+counter_to_cabinet_s13,"Fixed margin, look-around map",base,flour bag (clutter_floor_0),unmapped geometry,52
+counter_to_cabinet_s13,"Fixed margin, look-around map",base,single cabinet (stack_01_main_group_1_1),other mapped geometry,2
+counter_to_cabinet_s13,"Fixed margin, look-around map",base,wall (wall_right_1_room),other mapped geometry,12
+counter_to_cabinet_s13,"Fixed margin, look-around map",fingers,counter (island_island_group_1),other mapped geometry,21
+counter_to_cabinet_s13,"Fixed margin, look-around map",hand,wall (wall_right_1_room),other mapped geometry,18
+counter_to_cabinet_s13,"Proposed, look-around map",base,flour bag (clutter_floor_0),other mapped geometry,5
+counter_to_cabinet_s13,"Proposed, look-around map",base,flour bag (clutter_floor_0),unmapped geometry,43
+counter_to_cabinet_s13,"Proposed, look-around map",fingers,counter (counter_1_main_group_1),other mapped geometry,20
+counter_to_stove_s0,Nominal,arm,counter (island_2_island_group_1),other mapped geometry,7
+counter_to_stove_s0,Nominal,arm,plate (obj_container),other mapped geometry,12
+counter_to_stove_s0,Nominal,arm,unknown (obstacle_0),designated obstacle,14
+counter_to_stove_s0,Nominal,base,basket (clutter_floor_1),unmapped geometry,7
+counter_to_stove_s0,End-effector filter,arm,unknown (obstacle_0),designated obstacle,16
+counter_to_stove_s0,End-effector filter,base,basket (clutter_floor_1),unmapped geometry,7
+counter_to_stove_s0,Fixed margin,base,basket (clutter_floor_1),unmapped geometry,8
+counter_to_stove_s0,Proposed without ISSf,arm,unknown (obstacle_0),designated obstacle,13
+counter_to_stove_s0,Proposed without ISSf,base,basket (clutter_floor_1),unmapped geometry,6
+counter_to_stove_s0,Proposed without ISSf,base,drawer (stack_05_left_group_1_1),other mapped geometry,13
+counter_to_stove_s0,Proposed without ISSf,base,drawer (stack_05_left_group_1_2),other mapped geometry,11
+counter_to_stove_s0,Proposed,base,basket (clutter_floor_1),unmapped geometry,6
+counter_to_stove_s0,"Fixed margin, look-around map",base,basket (clutter_floor_1),other mapped geometry,4
+counter_to_stove_s0,"Fixed margin, look-around map",base,basket (clutter_floor_1),unmapped geometry,2
+counter_to_stove_s0,"Proposed, look-around map",base,basket (clutter_floor_1),other mapped geometry,11
+counter_to_stove_s7,Nominal,base,single cabinet (stack_3_island_group_1_1),other mapped geometry,16
+counter_to_stove_s7,End-effector filter,arm,bottled water (clutter_counter_0),other mapped geometry,4
+counter_to_stove_s7,End-effector filter,arm,bottled water (clutter_counter_0),unmapped geometry,16
+counter_to_stove_s7,End-effector filter,arm,boxed drink (clutter_counter_1),other mapped geometry,2
+counter_to_stove_s7,End-effector filter,arm,stovetop (stovetop_right_group_1),unmapped geometry,5
+counter_to_stove_s7,End-effector filter,arm,unknown (obstacle_1),designated obstacle,11
+counter_to_stove_s7,End-effector filter,base,single cabinet (stack_3_island_group_1_1),other mapped geometry,15
+counter_to_stove_s7,Fixed margin,base,bottled water (clutter_counter_0),unmapped geometry,1
+counter_to_stove_s7,"Fixed margin, look-around map",arm,bottled water (clutter_counter_0),unmapped geometry,1
+counter_to_stove_s7,"Fixed margin, look-around map",base,single cabinet (stack_3_island_group_1_1),unmapped geometry,13
+counter_to_stove_s7,"Fixed margin, look-around map",fingers,boxed drink (clutter_counter_1),unmapped geometry,93
+counter_to_stove_s7,"Fixed margin, look-around map",hand,boxed drink (clutter_counter_1),unmapped geometry,2
+counter_to_stove_s7,"Proposed, look-around map",arm,bottled water (clutter_counter_0),unmapped geometry,2
+counter_to_stove_s7,"Proposed, look-around map",arm,boxed drink (clutter_counter_1),unmapped geometry,2
+counter_to_stove_s7,"Proposed, look-around map",base,single cabinet (stack_3_island_group_1_1),unmapped geometry,16
+counter_to_stove_s9,Nominal,arm,counter (counter_1_left_group_1),other mapped geometry,4
+counter_to_stove_s9,Nominal,arm,plate (obj_container),other mapped geometry,12
+counter_to_stove_s9,Nominal,arm,plate (obj_container),unmapped geometry,6
+counter_to_stove_s9,Nominal,fingers,condiment bottle (clutter_counter_2),other mapped geometry,17
+counter_to_stove_s9,Nominal,fingers,unknown (obstacle_3),designated obstacle,11
+counter_to_stove_s9,Nominal,hand,condiment bottle (clutter_counter_2),other mapped geometry,15
+counter_to_stove_s9,Nominal,hand,condiment bottle (clutter_counter_2),unmapped geometry,4
+counter_to_stove_s9,End-effector filter,arm,condiment bottle (clutter_counter_2),other mapped geometry,21
+counter_to_stove_s9,End-effector filter,arm,condiment bottle (clutter_counter_2),unmapped geometry,4
+counter_to_stove_s9,End-effector filter,arm,counter (counter_1_left_group_1),other mapped geometry,17
+counter_to_stove_s9,End-effector filter,arm,hinge cabinet (hingecabinet_3_left_group_1),other mapped geometry,24
+counter_to_stove_s9,End-effector filter,arm,plate (obj_container),unmapped geometry,1
+counter_to_stove_s9,End-effector filter,arm,stovetop (stovetop_left_group_1),other mapped geometry,14
+counter_to_stove_s9,End-effector filter,base,drawer (stack_3_left_group_1_1),other mapped geometry,117
+counter_to_stove_s10,Nominal,base,basket (clutter_floor_1),other mapped geometry,11
+counter_to_stove_s10,Nominal,base,basket (clutter_floor_1),unmapped geometry,12
+counter_to_stove_s10,Nominal,base,single cabinet (stack_1_island_group_1_1),other mapped geometry,260
+counter_to_stove_s10,Nominal,base,single cabinet (stack_2_island_group_1_1),other mapped geometry,327
+counter_to_stove_s10,Nominal,base,single cabinet (stack_5_island_group_2.001_1),other mapped geometry,29
+counter_to_stove_s10,Nominal,base,single cabinet (stack_6_island_group_2.001_1),other mapped geometry,102
+counter_to_stove_s10,Nominal,base,single cabinet (stack_6_island_group_2.001_1),unmapped geometry,3
+counter_to_stove_s10,Nominal,base,single cabinet (stack_7_island_group_2.001_1),other mapped geometry,61
+counter_to_stove_s10,Nominal,hand,unknown (obstacle_2),designated obstacle,6
+counter_to_stove_s10,End-effector filter,base,fish (obj),unmapped geometry,1
+counter_to_stove_s10,End-effector filter,base,single cabinet (stack_6_island_group_2.001_1),other mapped geometry,161
+counter_to_stove_s10,End-effector filter,base,single cabinet (stack_7_island_group_2.001_1),other mapped geometry,17
+counter_to_stove_s10,"Fixed margin, look-around map",base,fish (obj),unmapped geometry,5
+counter_to_stove_s10,"Fixed margin, look-around map",base,single cabinet (stack_5_island_group_2.001_1),unmapped geometry,9
+counter_to_stove_s10,"Fixed margin, look-around map",fingers,counter (counter_1_main_group_1),unmapped geometry,12
+counter_to_stove_s10,"Proposed, look-around map",base,single cabinet (stack_5_island_group_2.001_1),unmapped geometry,60
+counter_to_sink_s0,Nominal,arm,sink (sink_main_group_1),other mapped geometry,12
+counter_to_sink_s0,Nominal,arm,unknown (obstacle_0),designated obstacle,7
+counter_to_sink_s0,Nominal,hand,unknown (obstacle_0),designated obstacle,49
+counter_to_sink_s0,End-effector filter,arm,unknown (obstacle_0),designated obstacle,43
+counter_to_sink_s0,End-effector filter,fingers,unknown (obstacle_0),designated obstacle,10
+counter_to_sink_s0,End-effector filter,hand,unknown (obstacle_0),designated obstacle,8
+counter_to_sink_s0,Fixed margin,arm,unknown (obstacle_0),designated obstacle,29
+counter_to_sink_s0,Proposed without ISSf,arm,unknown (obstacle_0),designated obstacle,14
+counter_to_sink_s0,Proposed without ISSf,hand,unknown (obstacle_0),designated obstacle,22
+counter_to_sink_s0,Proposed,arm,unknown (obstacle_0),designated obstacle,11
+counter_to_sink_s0,"Fixed margin, look-around map",hand,unknown (obstacle_0),designated obstacle,52
+counter_to_sink_s0,"Proposed, look-around map",fingers,unknown (obstacle_0),designated obstacle,2
+counter_to_sink_s1,Nominal,base,drawer (stack_1_island_group_1_1),other mapped geometry,60
+counter_to_sink_s1,Nominal,base,hinge cabinet (stack_4_main_group_1_1),other mapped geometry,3
+counter_to_sink_s1,Nominal,fingers,banana (distr_counter),other mapped geometry,7
+counter_to_sink_s1,Nominal,fingers,banana (distr_counter),unmapped geometry,45
+counter_to_sink_s1,Nominal,fingers,condiment bottle (clutter_counter_2),other mapped geometry,36
+counter_to_sink_s1,Nominal,fingers,condiment bottle (clutter_counter_2),unmapped geometry,55
+counter_to_sink_s1,Nominal,fingers,counter (island_island_group_1),other mapped geometry,47
+counter_to_sink_s1,Nominal,hand,condiment bottle (clutter_counter_2),other mapped geometry,3
+counter_to_sink_s1,Nominal,hand,condiment bottle (clutter_counter_2),unmapped geometry,3
+counter_to_sink_s1,End-effector filter,arm,counter (counter_1_right_group_1),other mapped geometry,3
+counter_to_sink_s1,End-effector filter,arm,sink (sink_1_right_group_1),other mapped geometry,8
+counter_to_sink_s1,End-effector filter,base,drawer (stack_1_island_group_1_1),other mapped geometry,1
+counter_to_sink_s1,"Fixed margin, look-around map",arm,sink (sink_1_right_group_1),unmapped geometry,12
+counter_to_sink_s1,"Fixed margin, look-around map",base,drawer (stack_1_island_group_1_1),unmapped geometry,1
+counter_to_sink_s1,"Fixed margin, look-around map",base,drawer (stack_2_right_group_1_1),unmapped geometry,43
+counter_to_sink_s1,"Fixed margin, look-around map",base,drawer (stack_2_right_group_1_2),unmapped geometry,43
+counter_to_sink_s1,"Fixed margin, look-around map",fingers,banana (distr_counter),unmapped geometry,54
+counter_to_sink_s1,"Proposed, look-around map",base,drawer (stack_1_island_group_1_1),unmapped geometry,1
+counter_to_sink_s1,"Proposed, look-around map",base,drawer (stack_2_right_group_1_1),unmapped geometry,50
+counter_to_sink_s1,"Proposed, look-around map",base,drawer (stack_2_right_group_1_2),unmapped geometry,50
+counter_to_sink_s1,"Proposed, look-around map",fingers,banana (distr_counter),unmapped geometry,56
+counter_to_sink_s11,Nominal,arm,boxed drink (clutter_counter_0),other mapped geometry,2
+counter_to_sink_s11,Nominal,arm,condiment bottle (clutter_counter_2),other mapped geometry,9
+counter_to_sink_s11,Nominal,arm,condiment bottle (clutter_counter_2),unmapped geometry,8
+counter_to_sink_s11,Nominal,arm,counter (counter_1_main_group_1),other mapped geometry,9
+counter_to_sink_s11,Nominal,fingers,unknown (obstacle_3),designated obstacle,13
+counter_to_sink_s11,Nominal,hand,condiment bottle (clutter_counter_2),other mapped geometry,9
+counter_to_sink_s11,Nominal,hand,condiment bottle (clutter_counter_2),unmapped geometry,2
+counter_to_sink_s11,"Fixed margin, look-around map",base,dishwasher (dishwasher_1_main_group_1),unmapped geometry,75
+counter_to_sink_s11,"Fixed margin, look-around map",base,hinge cabinet (stack_02_main_group_1_1),unmapped geometry,353
+counter_to_sink_s11,"Fixed margin, look-around map",fingers,condiment bottle (clutter_counter_2),unmapped geometry,74
+counter_to_sink_s11,"Fixed margin, look-around map",fingers,unknown (obstacle_3),designated obstacle,254
+counter_to_sink_s11,"Fixed margin, look-around map",hand,condiment bottle (clutter_counter_2),unmapped geometry,74
+counter_to_sink_s11,"Fixed margin, look-around map",hand,unknown (obstacle_3),designated obstacle,48
+counter_to_sink_s11,"Proposed, look-around map",arm,boxed drink (clutter_counter_0),unmapped geometry,7
+counter_to_sink_s11,"Proposed, look-around map",base,box (cube_01_island_group_1),unmapped geometry,47
+counter_to_sink_s11,"Proposed, look-around map",base,box (cube_07_island_group_1),unmapped geometry,9
+counter_to_sink_s11,"Proposed, look-around map",base,drawer (stack_05_right_group_1_1),unmapped geometry,48
+counter_to_sink_s11,"Proposed, look-around map",base,single cabinet (stack_04_right_group_1_1),unmapped geometry,514
+counter_to_sink_s11,"Proposed, look-around map",base,stove (stove_right_group_1),unmapped geometry,15
+counter_to_sink_s11,"Proposed, look-around map",fingers,condiment bottle (clutter_counter_2),unmapped geometry,71
+counter_to_sink_s11,"Proposed, look-around map",fingers,toaster (toaster_right_group_1),unmapped geometry,85
+counter_to_sink_s11,"Proposed, look-around map",hand,counter (counter_3_right_group_1),unmapped geometry,37

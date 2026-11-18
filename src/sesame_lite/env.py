@@ -169,6 +169,25 @@ class UnmappedRoleError(RuntimeError):
     """A plan role names an object the Hydra map has no node for: the mission stops (nothing is filled in from the oracle)."""
 
 
+class VelocityDisturbance:
+    """A bounded, smooth disturbance added to the commanded joint velocities (the ISSf setting q_dot = u + d): per joint an
+    Ornstein-Uhlenbeck process with correlation time ``tau_s`` and standard deviation ``scale`` (base x, y [m/s], base yaw
+    and the 7 arm joints [rad/s]), cut at 2 standard deviations; seeded by the scene, so every method of a scene meets the
+    same sequence. It is tracked like any command (no delay)."""
+
+    LEVELS = {"d1": dict(base_xy=0.01, base_yaw=0.02, arm=0.01), "d2": dict(base_xy=0.02, base_yaw=0.04, arm=0.02),
+              "a1": dict(base_xy=0.0, base_yaw=0.0, arm=0.01), "a2": dict(base_xy=0.0, base_yaw=0.0, arm=0.02)}  # a: the arm only
+
+    def __init__(self, seed: int, level: str, tau_s: float = 0.5):
+        c = self.LEVELS[level]
+        self.scale = np.r_[c["base_xy"], c["base_xy"], c["base_yaw"], np.full(7, c["arm"])]
+        self.rng, self.a, self.d = np.random.default_rng([seed, 11]), float(np.exp(-CONTROL_DT_S / tau_s)), np.zeros(10)
+
+    def step(self) -> np.ndarray:
+        self.d = self.a * self.d + np.sqrt(1.0 - self.a**2) * self.rng.standard_normal(10)
+        return np.clip(self.d, -2.0, 2.0) * self.scale
+
+
 class SafetyFilterEnv(gym.Wrapper):
     """Semantic safety filter in front of ``SesameRoboCasaEnv`` on the Hydra map; segments come from a plan.
 
@@ -178,7 +197,8 @@ class SafetyFilterEnv(gym.Wrapper):
     """
 
     def __init__(self, env: SesameRoboCasaEnv, *, pruning: bool = True, filter: bool = True, classifier: str = "prior", policy: FilterPolicy = FilterPolicy(),
-                 rows_for: str = "all", rho_fixed: float | None = None, max_replans: int = 3):
+                 rows_for: str = "all", rho_fixed: float | None = None, max_replans: int = 3, disturbance: str | None = None,
+                 arm_kv: float | None = None):
         """``rows_for``: "all" robot spheres, or "hand" (the hand and finger spheres only: the end-effector filter of
         EVAL_SPEC.md). ``rho_fixed``: every ball gets this radius (the fixed-margin filter). ``max_replans``: replans of
         a navigation path that leaves its corridor (0 in the evaluation: the shared plan is never replanned)."""
@@ -189,6 +209,8 @@ class SafetyFilterEnv(gym.Wrapper):
             raise ValueError(rows_for)
         self.pruning, self.filter_on, self.classifier_kind, self.policy = pruning, filter, classifier, policy
         self.rows_for, self.rho_fixed, self.max_replans = rows_for, rho_fixed, max_replans
+        self.disturbance_level, self._disturbance = disturbance, None  # VelocityDisturbance.LEVELS, or None
+        self.arm_kv = arm_kv  # the arm drive's tracking gain (JointVelocityDrive.kv), lower: a softer servo; None: the drive's own
         self.tag = run_tag(pruning, filter)
         self._classifier = CLASSIFIERS[classifier]() if (pruning and filter) else None  # the classifier only runs when it can change something
 
@@ -308,6 +330,8 @@ class SafetyFilterEnv(gym.Wrapper):
         robot = rs.robots[0]
         self.robot = RobotSpheres(model, _raw_data(rs.sim))
         self.drive = JointVelocityDrive.install(robot)
+        if self.arm_kv:
+            self.drive.kv = float(self.arm_kv)
         self.base_ctrl, self.torso_ctrl = robot.composite_controller.part_controllers["base"], robot.composite_controller.part_controllers["torso"]
         hand = np.array([link in HAND_LINKS for link in self.robot.links])
         self.filter = SphereFilter(self.robot, self.policy, row_spheres=hand if self.rows_for == "hand" else None)
@@ -316,6 +340,7 @@ class SafetyFilterEnv(gym.Wrapper):
         self.arm_q_lo, self.arm_q_hi = model.jnt_range[arm_j, 0].copy(), model.jnt_range[arm_j, 1].copy()
         self.receipts, self.ground_truth, self.bundles, self.ball_log, self.q_log, self.sphere_h_log = [], [], [], [], [], []
         self.object_log, self.qpos_log = [], []
+        self._disturbance = None
         self.tick, self.epoch, self.hold_streak, self.stop_reason = 0, 0, 0, None
         self.replans, self.segment_index = 0, -1
         self.base_policy_v = np.zeros(3)  # the base's joint velocity under the policy's commands alone (starts at rest)
@@ -480,8 +505,17 @@ class SafetyFilterEnv(gym.Wrapper):
         if not np.allclose(u[:3], u_nom[:3], rtol=0.0, atol=1e-9):  # the base command only changes if the filter changed it
             a[BASE_SLICE] = self.base_model.command(u[:3], theta, v0)
         self.drive.command = (u[3:], profile)
+        rec = rec.as_dict()
+        if self.disturbance_level:  # the same disturbance for every method of the scene (filter on or off)
+            if self._disturbance is None:
+                self._disturbance = VelocityDisturbance(self.seed, self.disturbance_level)
+            dd = self._disturbance.step()
+            lo, hi = self.base_model.bounds(v0)
+            a[BASE_SLICE] = self.base_model.command(np.clip(u[:3] + dd[:3], lo, hi), theta, v0)
+            self.drive.command = (u[3:] + dd[3:], profile)
+            rec["disturbance_injected"] = dd.round(5).tolist()
         self.last_barrier = bar
-        self._record(rec.as_dict(), np.asarray(action, dtype=float), q, bar)
+        self._record(rec, np.asarray(action, dtype=float), q, bar)
         out = self.env.step(a.astype(np.float32))
         if self.segment.kind == NAVIGATION and self.replans < self.max_replans and self._path_deviation() > BETA_DEVIATION_BUDGET_M:
             self.replan()  # Assumption 1 premise violated: new path from here, new epoch (stage 1 + labels again)
@@ -632,7 +666,7 @@ class SafetyFilterEnv(gym.Wrapper):
             "n_rows_qp_mean": float(np.mean([r["n_rows_qp"] for r in rec] or [0])), "n_rows_qp_max": max((r["n_rows_qp"] for r in rec), default=0),
             "tick_ms_median": float(np.median(tick_ms)), "tick_ms_p95": float(np.percentile(tick_ms, 95)), "tick_ms_max": float(tick_ms.max()),
             "solve_ms_median": float(np.median(solve_ms)), "solve_ms_max": float(solve_ms.max()),
-            "n_spheres": self.robot.n, "n_nodes": len(self.graph.nodes), "n_candidates": [len(b.candidate_ids) for b in self.bundles],
+            "n_spheres": self.robot.n, "rho_fixed_m": self.rho_fixed, "n_nodes": len(self.graph.nodes), "n_candidates": [len(b.candidate_ids) for b in self.bundles],
             "n_admitted": [len(b.admitted_ids) for b in self.bundles], "n_row_objects": [s["n_admitted"] for s in self.ball_log],
             "balls": [{k: v for k, v in s.items() if k in ("segment", "epoch", "n_admitted", "m_r", "m_d", "kappa_s_bar_quantiles_m")} for s in self.ball_log],
             "classifier_latency_s": [b.classifier_latency_s for b in self.bundles],

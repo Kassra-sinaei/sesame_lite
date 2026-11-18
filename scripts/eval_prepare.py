@@ -18,12 +18,14 @@ if os.environ.get("PYTHONHASHSEED") != "0":
 
 import sesame_lite.tasks  # noqa: F401,E402  (registers the Eval tasks)
 from sesame_lite.env import SesameRoboCasaEnv  # noqa: E402
+from sesame_lite.mapping import MappingParams  # noqa: E402
 from sesame_lite.eval_scene import ENV_KWARGS, HORIZON, INSTRUCTIONS, SCENES_DIR, EvalFilterEnv, ScenePrepError, prepare_scene, scene_name  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--instruction", required=True, choices=tuple(INSTRUCTIONS))
 ap.add_argument("--seed", type=int, required=True)
 ap.add_argument("--exclude", nargs="*", default=[])
+ap.add_argument("--voxel", type=float, default=None, help="voxel size of the preparation maps [m] (default: MappingParams; the first 24 scenes: 0.05)")
 args = ap.parse_args()
 out = SCENES_DIR / scene_name(args.instruction, args.seed)
 if (out / "scene.json").exists():
@@ -34,7 +36,7 @@ t0 = time.time()
 base = SesameRoboCasaEnv(INSTRUCTIONS[args.instruction]["task"], env_kwargs=dict(ENV_KWARGS), episode_length=HORIZON)
 env = EvalFilterEnv(base, filter=False)
 try:
-    scene = prepare_scene(env, args.instruction, args.seed, out, exclude)
+    scene = prepare_scene(env, args.instruction, args.seed, out, exclude, None if args.voxel is None else MappingParams(voxel_size_m=args.voxel))
     status = {"scene": out.name, "status": "ok", "kitchen": scene["kitchen"], "path_length_m": scene["start"]["path_length_m"], "language": scene["language"]}
 except ScenePrepError as exc:
     meta = env.rs.get_ep_meta()

@@ -15,6 +15,8 @@ starts in front of the fixture farthest from the sink, so a plan needs a navigat
 
 from __future__ import annotations
 
+import copy
+
 import mujoco
 import numpy as np
 from robocasa.environments.kitchen.atomic.kitchen_doors import CloseCabinet, CloseFridge, OpenCabinet
@@ -28,6 +30,7 @@ from robocasa.environments.kitchen.atomic.kitchen_pick_place import (
     PickPlaceStoveToCounter,
 )
 from robocasa.environments.kitchen.kitchen import FixtureType
+from robocasa.utils import env_utils as EnvUtils
 
 from sesame_lite.scene_graph import _raw_data, _raw_model
 
@@ -88,6 +91,9 @@ def place_on_path(rs_env, path_xy: np.ndarray) -> None:
 
 EVAL_FLOOR_CATEGORIES = ("flour_bag", "basket", "boxed_food")  # floor obstacles: sturdy, floor-plausible
 EVAL_COUNTER_CATEGORIES = ("bottled_water", "canned_food", "condiment_bottle", "boxed_drink", "mug")  # small: they fit on narrow counter strips
+# candidates for the safety obstacle (eval_scene.OBSTACLE_RULE): tall, solid, wide objects that a 5 cm map reconstructs
+# (pitchers 24 cm high and 13 cm wide, kettles 17-20 cm and 14-16 cm, medians); the rule takes the first, in an order drawn by the scene seed, that fits
+EVAL_OBSTACLE_CATEGORIES = ("pitcher", "kettle_non_electric", "pitcher", "kettle_non_electric")  # in the objaverse and lightwheel packs the env loads
 
 
 class EvalClutter:
@@ -101,6 +107,33 @@ class EvalClutter:
                  for k, cat in enumerate(EVAL_FLOOR_CATEGORIES)]
         cfgs += [dict(name=f"clutter_counter_{k}", obj_groups=EVAL_COUNTER_CATEGORIES, init_robot_here=False, placement=dict(spawn)) for k in range(3)]
         return cfgs
+
+    def _create_objects(self):
+        """The task's objects and the clutter as before; then the candidates for the safety obstacle, drawn from a copy of
+        the kitchen's random stream and left out of RoboCasa's placement, so that the kitchen and every other object come
+        out exactly as without them (RoboCasa draws placements from the same stream and rebuilds the kitchen when a
+        placement fails)."""
+        super()._create_objects()
+        rng, self.rng = self.rng, copy.deepcopy(self.rng)
+        try:
+            self.obstacle_cfgs = []
+            for k, cat in enumerate(EVAL_OBSTACLE_CATEGORIES):
+                cfg = dict(name=f"obstacle_{k}", obj_groups=cat, type="object")
+                model, info = EnvUtils.create_obj(self, cfg)
+                cfg["info"] = info
+                self.objects[model.name] = model
+                self.model.merge_objects([model])
+                self.obstacle_cfgs.append(cfg)
+        finally:
+            self.rng = rng
+
+    def _reset_internal(self):
+        """As the task's, then the obstacle candidates 5 m under the first counter object (out of every view)."""
+        super()._reset_internal()
+        ref = np.array(self.sim.data.body_xpos[self.obj_body_id["clutter_counter_0"]])
+        for k, cfg in enumerate(self.obstacle_cfgs):
+            self.sim.data.set_joint_qpos(self.objects[cfg["name"]].joints[0], np.r_[ref[0] + 0.5 * k, ref[1], ref[2] - 5.0, 1.0, 0.0, 0.0, 0.0])
+        self.sim.forward()
 
 
 class EvalOpenDrawer(EvalClutter, OpenDrawer):

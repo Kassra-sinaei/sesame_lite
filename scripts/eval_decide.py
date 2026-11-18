@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 if os.environ.get("PYTHONHASHSEED") != "0":
     os.execve(sys.executable, [sys.executable, *sys.argv], {**os.environ, "PYTHONHASHSEED": "0"})
@@ -22,8 +23,9 @@ from sesame_lite.eval_scene import SCENES_DIR, EvalFilterEnv  # noqa: E402
 ap = argparse.ArgumentParser()
 ap.add_argument("--scene", required=True)
 ap.add_argument("--map", default="full", choices=("full", "look"))
+ap.add_argument("--scenes-root", default=None, help="a directory of scene variants (tuning)")
 args = ap.parse_args()
-scene_dir = SCENES_DIR / args.scene
+scene_dir = (Path(args.scenes_root) if args.scenes_root else SCENES_DIR) / args.scene
 scene = json.loads((scene_dir / "scene.json").read_text())
 base = SesameRoboCasaEnv(scene["task"], env_kwargs=dict(scene["env_kwargs"]), episode_length=scene["horizon"])
 env = EvalFilterEnv(base, map_kind=args.map, pair_pruning="rule", classifier="qwen")

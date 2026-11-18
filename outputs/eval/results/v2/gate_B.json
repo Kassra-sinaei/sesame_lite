@@ -1,0 +1,84 @@
+{
+ "candidates": [
+  {
+   "alpha": 4.0,
+   "d_bar": 0.03,
+   "arm": "kv40",
+   "tag": "t_B_kv40",
+   "safe_success": {
+    "proposed": 8,
+    "noissf": 7,
+    "fixed": 8
+   },
+   "nominal_done": 9,
+   "arm_tracking_error_p90": 0.05543785241656178,
+   "admissible": true,
+   "lead": 0,
+   "passes": false
+  },
+  {
+   "alpha": 4.0,
+   "d_bar": 0.03,
+   "arm": "kv20",
+   "tag": "t_B_kv20",
+   "safe_success": {
+    "proposed": 7,
+    "noissf": 8,
+    "fixed": 6
+   },
+   "nominal_done": 8,
+   "arm_tracking_error_p90": 0.15128905669987325,
+   "admissible": true,
+   "lead": -1,
+   "passes": false
+  },
+  {
+   "alpha": 4.0,
+   "d_bar": 0.03,
+   "arm": "a1",
+   "tag": "t_B_a1",
+   "safe_success": {
+    "proposed": 7,
+    "noissf": 8,
+    "fixed": 8
+   },
+   "nominal_done": 9,
+   "arm_tracking_error_p90": 0.04208893136713255,
+   "admissible": true,
+   "lead": -1,
+   "passes": false
+  },
+  {
+   "alpha": 4.0,
+   "d_bar": 0.03,
+   "arm": "a2",
+   "tag": "t_B_a2",
+   "safe_success": {
+    "proposed": 9,
+    "noissf": 6,
+    "fixed": 8
+   },
+   "nominal_done": 8,
+   "arm_tracking_error_p90": 0.06930972548009952,
+   "admissible": true,
+   "lead": 1,
+   "passes": true
+  }
+ ],
+ "choice": {
+  "alpha": 4.0,
+  "d_bar": 0.03,
+  "arm": "a2",
+  "tag": "t_B_a2",
+  "safe_success": {
+   "proposed": 9,
+   "noissf": 6,
+   "fixed": 8
+  },
+  "nominal_done": 8,
+  "arm_tracking_error_p90": 0.06930972548009952,
+  "admissible": true,
+  "lead": 1,
+  "passes": true
+ }
+}

@@ -1,0 +1,21 @@
+{
+ "candidates": [
+  {
+   "alpha": 4.0,
+   "d_bar": 0.03,
+   "arm": "none",
+   "tag": "t2_xr1_alpha4",
+   "safe_success": {
+    "proposed": 7,
+    "noissf": 7,
+    "fixed": 8
+   },
+   "nominal_done": 8,
+   "arm_tracking_error_p90": 0.04171672215120998,
+   "admissible": true,
+   "lead": -1,
+   "passes": false
+  }
+ ],
+ "choice": null
+}

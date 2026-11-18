@@ -1,0 +1,10 @@
+sink_to_counter_s1000
+sink_to_counter_s1001
+counter_to_cabinet_s1003
+counter_to_cabinet_s1004
+counter_to_stove_s1001
+counter_to_stove_s1002
+counter_to_sink_s1000
+counter_to_sink_s1001
+close_fridge_s1001
+close_cabinet_s1001
