@@ -198,7 +198,7 @@ class SafetyFilterEnv(gym.Wrapper):
 
     def __init__(self, env: SesameRoboCasaEnv, *, pruning: bool = True, filter: bool = True, classifier: str = "prior", policy: FilterPolicy = FilterPolicy(),
                  rows_for: str = "all", rho_fixed: float | None = None, max_replans: int = 3, disturbance: str | None = None,
-                 arm_kv: float | None = None):
+                 arm_kv: float | None = None, filter_segments: tuple[int, ...] | None = None):
         """``rows_for``: "all" robot spheres, or "hand" (the hand and finger spheres only: the end-effector filter of
         EVAL_SPEC.md). ``rho_fixed``: every ball gets this radius (the fixed-margin filter). ``max_replans``: replans of
         a navigation path that leaves its corridor (0 in the evaluation: the shared plan is never replanned)."""
@@ -211,6 +211,7 @@ class SafetyFilterEnv(gym.Wrapper):
         self.rows_for, self.rho_fixed, self.max_replans = rows_for, rho_fixed, max_replans
         self.disturbance_level, self._disturbance = disturbance, None  # VelocityDisturbance.LEVELS, or None
         self.arm_kv = arm_kv  # the arm drive's tracking gain (JointVelocityDrive.kv), lower: a softer servo; None: the drive's own
+        self.filter_segments = filter_segments  # the segments the filter acts in (None: every segment); passive in the others
         self.tag = run_tag(pruning, filter)
         self._classifier = CLASSIFIERS[classifier]() if (pruning and filter) else None  # the classifier only runs when it can change something
 
@@ -393,6 +394,8 @@ class SafetyFilterEnv(gym.Wrapper):
         """Prune for one segment (an epoch) and fix its rows: the admitted, non-exempt objects and their balls."""
         if index != self.segment_index:
             self.replans = 0
+        if self.filter_segments is not None:
+            self.filter_on = index in self.filter_segments
         self.segment_index = index
         seg = self.segments[index]
         self.bundle = build_bundle(seg, self.graph, balls=self.plan_balls, classifier=self._classifier, base_circumscribed_radius_m=self.base_radius, policy_margin_m=0.0, eef_reach_m=1.0 * CONTROL_DT_S)

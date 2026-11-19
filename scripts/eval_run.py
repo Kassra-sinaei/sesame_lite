@@ -33,9 +33,9 @@ from sesame_lite.env import MissionRunner, SesameRoboCasaEnv, _json_default  # n
 from sesame_lite.eval_scene import DEBUG_DIR, EVAL_DIR, FOLLOWER_LOOKAHEAD_M, SCENES_DIR, EvalFilterEnv  # noqa: E402
 from sesame_lite.filter import FilterPolicy  # noqa: E402
 
-METHODS = ("nominal", "ee", "fixed", "noissf", "proposed", "qwen_pairs", "patch")
+METHODS = ("nominal", "ee", "fixed", "noissf", "proposed", "qwen_pairs", "patch", "nominal_nav", "aegis")
 TITLES = {"nominal": "Nominal", "ee": "End-effector filter", "fixed": "Fixed margin", "noissf": "Proposed without ISSf", "proposed": "Proposed",
-          "qwen_pairs": "Pairs chosen by Qwen (reference)", "patch": "Finger patch (reference)"}
+          "qwen_pairs": "Pairs chosen by Qwen (reference)", "patch": "Finger patch (reference)", "nominal_nav": "Nominal", "aegis": "AEGIS"}
 
 
 def method_kwargs(method: str, overrides: dict) -> dict:
@@ -61,6 +61,8 @@ def method_kwargs(method: str, overrides: dict) -> dict:
         return {"policy": policy, **plan}
     if method == "qwen_pairs":
         return {"policy": policy, "pair_pruning": "model", "classifier": "qwen"}
+    if method in ("nominal_nav", "aegis"):  # comparison table v3: navigation by Proposed; manipulation without it (AEGIS: src/aegis)
+        return {"policy": policy, **plan, "filter_segments": (0,)}
     return {"policy": policy}
 
 
@@ -86,7 +88,12 @@ if out.exists():
     sys.exit(0)
 t0 = time.time()
 base = SesameRoboCasaEnv(scene["task"], env_kwargs=dict(scene["env_kwargs"]), episode_length=args.horizon or scene["horizon"])
-env = EvalFilterEnv(base, map_kind=args.map, disturbance=args.disturbance, arm_kv=args.arm_kv, **method_kwargs(args.method, json.loads(args.policy)))
+env_cls, video_cls = EvalFilterEnv, None
+if args.method == "aegis":
+    from aegis.env import AegisEnv, AegisVideo
+
+    env_cls, video_cls = AegisEnv, AegisVideo
+env = env_cls(base, map_kind=args.map, disturbance=args.disturbance, arm_kv=args.arm_kv, **method_kwargs(args.method, json.loads(args.policy)))
 obs, _ = env.reset(scene_dir=scene_dir)
 env.method_title = TITLES[args.method] + (", look-around map" if args.map == "look" else "")
 if args.vla == "xr1":
@@ -99,7 +106,7 @@ video = None
 if args.video == "on" or (args.video == "auto" and not args.tuning and args.method in ("nominal", "proposed") and args.map == "full"):
     from sesame_lite.viz import EvalVideo
 
-    video = EvalVideo(env, (DEBUG_DIR / "tuning_videos" / args.tuning if args.tuning else EVAL_DIR / "videos") / args.scene / f"{args.method}_{args.map}")
+    video = (video_cls or EvalVideo)(env, (DEBUG_DIR / "tuning_videos" / args.tuning if args.tuning else EVAL_DIR / "videos") / args.scene / f"{args.method}_{args.map}")
 torch.manual_seed(scene["seed"])  # the policy's sampling noise: the same sequence for every method of a scene
 success, stalled = MissionRunner(env, vla=vla, on_frame=video, lookahead=args.lookahead).run(obs)
 result = {"scene": args.scene, "method": args.method, "map": args.map, "seed": scene["seed"], "follower_lookahead_m": args.lookahead, "disturbance_level": args.disturbance, "vla": args.vla, "wall_s": time.time() - t0, **env.summary(success, stalled)}
