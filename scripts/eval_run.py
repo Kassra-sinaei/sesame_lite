@@ -33,9 +33,9 @@ from sesame_lite.env import MissionRunner, SesameRoboCasaEnv, _json_default  # n
 from sesame_lite.eval_scene import DEBUG_DIR, EVAL_DIR, FOLLOWER_LOOKAHEAD_M, SCENES_DIR, EvalFilterEnv  # noqa: E402
 from sesame_lite.filter import FilterPolicy  # noqa: E402
 
-METHODS = ("nominal", "ee", "fixed", "noissf", "proposed", "qwen_pairs", "patch")
+METHODS = ("nominal", "ee", "fixed", "noissf", "proposed", "qwen_pairs", "patch", "omniguide")
 TITLES = {"nominal": "Nominal", "ee": "End-effector filter", "fixed": "Fixed margin", "noissf": "Proposed without ISSf", "proposed": "Proposed",
-          "qwen_pairs": "Pairs chosen by Qwen (reference)", "patch": "Finger patch (reference)"}
+          "qwen_pairs": "Pairs chosen by Qwen (reference)", "patch": "Finger patch (reference)", "omniguide": "OmniGuide"}
 
 
 def method_kwargs(method: str, overrides: dict) -> dict:
@@ -57,7 +57,7 @@ def method_kwargs(method: str, overrides: dict) -> dict:
         return {"rho_fixed": rho, "policy": policy, **plan}
     if method == "noissf":
         return {"policy": FilterPolicy(**{**overrides, "issf": False}), **plan}
-    if method == "proposed":
+    if method in ("proposed", "omniguide"):  # omniguide: Proposed in the navigation segment only (src/omniguide/client.py)
         return {"policy": policy, **plan}
     if method == "qwen_pairs":
         return {"policy": policy, "pair_pruning": "model", "classifier": "qwen"}
@@ -77,6 +77,7 @@ ap.add_argument("--tuning", default=None, help="a tuning round (stage 0b, not co
 ap.add_argument("--vla", default="pi05", choices=("pi05", "xr1"), help="the VLA nominal: lerobot/pi05_robocasa, or Xiaomi-Robotics-1-RoboCasa365 (scripts/xr1_server.py must run)")
 ap.add_argument("--disturbance", default=None, choices=("d1", "d2", "a1", "a2"), help="a velocity disturbance (env.VelocityDisturbance), the same for every method")
 ap.add_argument("--arm-kv", type=float, default=None, help="the arm drive's tracking gain (default: JointVelocityDrive.kv = 100), the same for every method")
+ap.add_argument("--guidance-factor", type=float, default=None, help="OmniGuide's guidance_factor (method omniguide; src/omniguide/server.py must run)")
 args = ap.parse_args()
 scene_dir = (Path(args.scenes_root) if args.scenes_root else SCENES_DIR) / args.scene
 scene = json.loads((scene_dir / "scene.json").read_text())
@@ -86,10 +87,17 @@ if out.exists():
     sys.exit(0)
 t0 = time.time()
 base = SesameRoboCasaEnv(scene["task"], env_kwargs=dict(scene["env_kwargs"]), episode_length=args.horizon or scene["horizon"])
-env = EvalFilterEnv(base, map_kind=args.map, disturbance=args.disturbance, arm_kv=args.arm_kv, **method_kwargs(args.method, json.loads(args.policy)))
+env_cls = EvalFilterEnv
+if args.method == "omniguide":
+    from omniguide.client import OmniGuideEnv as env_cls
+env = env_cls(base, map_kind=args.map, disturbance=args.disturbance, arm_kv=args.arm_kv, **method_kwargs(args.method, json.loads(args.policy)))
 obs, _ = env.reset(scene_dir=scene_dir)
 env.method_title = TITLES[args.method] + (", look-around map" if args.map == "look" else "")
-if args.vla == "xr1":
+if args.method == "omniguide":
+    from omniguide.client import GuidedXR1Policy
+
+    vla = GuidedXR1Policy(base, env, scene["seed"], args.guidance_factor)
+elif args.vla == "xr1":
     from xr1_nominal import XR1Policy
 
     vla = XR1Policy(base, scene["seed"])
@@ -104,6 +112,8 @@ torch.manual_seed(scene["seed"])  # the policy's sampling noise: the same sequen
 success, stalled = MissionRunner(env, vla=vla, on_frame=video, lookahead=args.lookahead).run(obs)
 result = {"scene": args.scene, "method": args.method, "map": args.map, "seed": scene["seed"], "follower_lookahead_m": args.lookahead, "disturbance_level": args.disturbance, "vla": args.vla, "wall_s": time.time() - t0, **env.summary(success, stalled)}
 env.dump(out, result)
+if args.method == "omniguide":
+    vla.dump(out.with_suffix(".omniguide.json"))
 if video is not None:
     video.close(result)
 keys = ("scene", "method", "map", "outcome", "success", "steps", "contact_ticks", "true_clearance_min", "relaxed_share", "unmapped_task_objects", "wall_s")
