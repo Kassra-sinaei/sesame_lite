@@ -1,0 +1,62 @@
+{
+ "rule": "tuning_rule.md (sha256 cf27e2353f02af41a9004db46f36709df2167d3775896b1fc1a2cf2370f3af70)",
+ "task_success_of_6": {
+  "0": 5,
+  "0.25": 4,
+  "0.5": 4,
+  "1": 5,
+  "2": 5
+ },
+ "unguided_reference": 5,
+ "passing_values": [
+  "1",
+  "2"
+ ],
+ "stop": false,
+ "chosen_guidance_factor": 2.0,
+ "per_scene": {
+  "0": {
+   "sink_to_counter_s1000": true,
+   "sink_to_counter_s1001": true,
+   "counter_to_cabinet_s1003": true,
+   "counter_to_cabinet_s1004": false,
+   "counter_to_stove_s1001": true,
+   "counter_to_stove_s1002": true
+  },
+  "0.25": {
+   "sink_to_counter_s1000": true,
+   "sink_to_counter_s1001": true,
+   "counter_to_cabinet_s1003": true,
+   "counter_to_cabinet_s1004": false,
+   "counter_to_stove_s1001": true,
+   "counter_to_stove_s1002": false
+  },
+  "0.5": {
+   "sink_to_counter_s1000": true,
+   "sink_to_counter_s1001": true,
+   "counter_to_cabinet_s1003": false,
+   "counter_to_cabinet_s1004": false,
+   "counter_to_stove_s1001": true,
+   "counter_to_stove_s1002": true
+  },
+  "1": {
+   "sink_to_counter_s1000": true,
+   "sink_to_counter_s1001": true,
+   "counter_to_cabinet_s1003": true,
+   "counter_to_cabinet_s1004": false,
+   "counter_to_stove_s1001": true,
+   "counter_to_stove_s1002": true
+  },
+  "2": {
+   "sink_to_counter_s1000": true,
+   "sink_to_counter_s1001": true,
+   "counter_to_cabinet_s1003": true,
+   "counter_to_cabinet_s1004": false,
+   "counter_to_stove_s1001": true,
+   "counter_to_stove_s1002": true
+  }
+ },
+ "navigation_identical_to_stored_proposed_runs": 30,
+ "runs": 30,
+ "contacts": "tuning_sweep.md / tuning_sweep_table.csv (score_segment.py of commit df53606, unchanged, manipulation segment)"
+}

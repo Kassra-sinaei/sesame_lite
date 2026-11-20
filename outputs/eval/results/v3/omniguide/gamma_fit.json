@@ -1,0 +1,382 @@
+{
+ "gamma_pos": [
+  0.01057,
+  0.01155,
+  0.00954
+ ],
+ "gamma_rot": 0.0806,
+ "theirs": {
+  "gamma_pos": [
+   0.011,
+   0.011,
+   0.02
+  ],
+  "gamma_rot": 0.15
+ },
+ "fit_runs": [
+  "/workspace/sesame_lite/outputs/eval/runs/close_cabinet_s16/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_cabinet_s17/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_cabinet_s3/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_cabinet_s7/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_cabinet_s8/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_cabinet_s9/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_fridge_s13/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_fridge_s3/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_fridge_s4/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_fridge_s5/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_fridge_s6/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/close_fridge_s9/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/counter_to_cabinet_s13/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/counter_to_cabinet_s18/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/counter_to_sink_s0/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/counter_to_sink_s1/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/counter_to_sink_s10/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/counter_to_sink_s11/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/counter_to_sink_s13/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/counter_to_sink_s19/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/counter_to_stove_s20/nominal_full",
+  "/workspace/sesame_lite/outputs/eval/runs/sink_to_counter_s0/nominal_full"
+ ],
+ "check_runs": [
+  "/workspace/sesame_lite/outputs/eval_debug/tuning/arm_a2/sink_to_counter_s1000/nominal_full",
+  "/workspace/sesame_lite/outputs/eval_debug/tuning/arm_a2/sink_to_counter_s1001/nominal_full",
+  "/workspace/sesame_lite/outputs/eval_debug/tuning/arm_a2/counter_to_cabinet_s1003/nominal_full",
+  "/workspace/sesame_lite/outputs/eval_debug/tuning/arm_a2/counter_to_cabinet_s1004/nominal_full",
+  "/workspace/sesame_lite/outputs/eval_debug/tuning/arm_a2/counter_to_stove_s1001/nominal_full",
+  "/workspace/sesame_lite/outputs/eval_debug/tuning/arm_a2/counter_to_stove_s1002/nominal_full"
+ ],
+ "errors": {
+  "fit_all": {
+   "fitted": {
+    "chunks": 740,
+    "gripper_m_all_steps": {
+     "rms": 0.0969,
+     "p95": 0.2446
+    },
+    "gripper_m_last_step": {
+     "rms": 0.1568,
+     "p95": 0.3795
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.1017,
+     "p95": 0.2462
+    },
+    "top_point_m_last_step": {
+     "rms": 0.1644,
+     "p95": 0.372
+    },
+    "rotation_deg_all_steps": {
+     "rms": 10.2512,
+     "p95": 23.0912
+    },
+    "rotation_deg_last_step": {
+     "rms": 16.6793,
+     "p95": 37.5121
+    }
+   },
+   "theirs": {
+    "chunks": 740,
+    "gripper_m_all_steps": {
+     "rms": 0.1009,
+     "p95": 0.245
+    },
+    "gripper_m_last_step": {
+     "rms": 0.1632,
+     "p95": 0.3795
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.1134,
+     "p95": 0.2758
+    },
+    "top_point_m_last_step": {
+     "rms": 0.1836,
+     "p95": 0.3885
+    },
+    "rotation_deg_all_steps": {
+     "rms": 12.4003,
+     "p95": 28.4001
+    },
+    "rotation_deg_last_step": {
+     "rms": 20.2273,
+     "p95": 46.6015
+    }
+   },
+   "no_motion": {
+    "chunks": 740,
+    "gripper_m_all_steps": {
+     "rms": 0.1161,
+     "p95": 0.248
+    },
+    "gripper_m_last_step": {
+     "rms": 0.1875,
+     "p95": 0.3798
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.1198,
+     "p95": 0.2528
+    },
+    "top_point_m_last_step": {
+     "rms": 0.1932,
+     "p95": 0.3727
+    },
+    "rotation_deg_all_steps": {
+     "rms": 13.0907,
+     "p95": 29.2796
+    },
+    "rotation_deg_last_step": {
+     "rms": 21.0337,
+     "p95": 42.9999
+    }
+   }
+  },
+  "fit_arm_mode": {
+   "fitted": {
+    "chunks": 519,
+    "gripper_m_all_steps": {
+     "rms": 0.0356,
+     "p95": 0.0742
+    },
+    "gripper_m_last_step": {
+     "rms": 0.057,
+     "p95": 0.1151
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.0593,
+     "p95": 0.1284
+    },
+    "top_point_m_last_step": {
+     "rms": 0.0955,
+     "p95": 0.2215
+    },
+    "rotation_deg_all_steps": {
+     "rms": 9.4384,
+     "p95": 19.4201
+    },
+    "rotation_deg_last_step": {
+     "rms": 15.3249,
+     "p95": 32.7891
+    }
+   },
+   "theirs": {
+    "chunks": 519,
+    "gripper_m_all_steps": {
+     "rms": 0.049,
+     "p95": 0.1069
+    },
+    "gripper_m_last_step": {
+     "rms": 0.0786,
+     "p95": 0.1714
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.0842,
+     "p95": 0.1916
+    },
+    "top_point_m_last_step": {
+     "rms": 0.1364,
+     "p95": 0.3453
+    },
+    "rotation_deg_all_steps": {
+     "rms": 12.5939,
+     "p95": 28.8066
+    },
+    "rotation_deg_last_step": {
+     "rms": 20.5379,
+     "p95": 51.4263
+    }
+   },
+   "no_motion": {
+    "chunks": 519,
+    "gripper_m_all_steps": {
+     "rms": 0.0834,
+     "p95": 0.1668
+    },
+    "gripper_m_last_step": {
+     "rms": 0.1337,
+     "p95": 0.2241
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.0953,
+     "p95": 0.1916
+    },
+    "top_point_m_last_step": {
+     "rms": 0.1529,
+     "p95": 0.2532
+    },
+    "rotation_deg_all_steps": {
+     "rms": 13.5327,
+     "p95": 30.0439
+    },
+    "rotation_deg_last_step": {
+     "rms": 21.6228,
+     "p95": 44.0572
+    }
+   }
+  },
+  "check_all": {
+   "fitted": {
+    "chunks": 306,
+    "gripper_m_all_steps": {
+     "rms": 0.0359,
+     "p95": 0.0648
+    },
+    "gripper_m_last_step": {
+     "rms": 0.0562,
+     "p95": 0.0879
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.0472,
+     "p95": 0.0911
+    },
+    "top_point_m_last_step": {
+     "rms": 0.0743,
+     "p95": 0.1512
+    },
+    "rotation_deg_all_steps": {
+     "rms": 6.2739,
+     "p95": 13.0276
+    },
+    "rotation_deg_last_step": {
+     "rms": 9.9549,
+     "p95": 19.2612
+    }
+   },
+   "theirs": {
+    "chunks": 306,
+    "gripper_m_all_steps": {
+     "rms": 0.0509,
+     "p95": 0.1057
+    },
+    "gripper_m_last_step": {
+     "rms": 0.08,
+     "p95": 0.1598
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.0652,
+     "p95": 0.1412
+    },
+    "top_point_m_last_step": {
+     "rms": 0.1023,
+     "p95": 0.2089
+    },
+    "rotation_deg_all_steps": {
+     "rms": 6.6788,
+     "p95": 13.4159
+    },
+    "rotation_deg_last_step": {
+     "rms": 10.6028,
+     "p95": 24.108
+    }
+   },
+   "no_motion": {
+    "chunks": 306,
+    "gripper_m_all_steps": {
+     "rms": 0.0801,
+     "p95": 0.1667
+    },
+    "gripper_m_last_step": {
+     "rms": 0.1294,
+     "p95": 0.2274
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.0832,
+     "p95": 0.1688
+    },
+    "top_point_m_last_step": {
+     "rms": 0.1334,
+     "p95": 0.2337
+    },
+    "rotation_deg_all_steps": {
+     "rms": 10.5162,
+     "p95": 22.4206
+    },
+    "rotation_deg_last_step": {
+     "rms": 16.5578,
+     "p95": 33.4657
+    }
+   }
+  },
+  "check_arm_mode": {
+   "fitted": {
+    "chunks": 295,
+    "gripper_m_all_steps": {
+     "rms": 0.0326,
+     "p95": 0.0622
+    },
+    "gripper_m_last_step": {
+     "rms": 0.0507,
+     "p95": 0.0859
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.0453,
+     "p95": 0.0864
+    },
+    "top_point_m_last_step": {
+     "rms": 0.071,
+     "p95": 0.1485
+    },
+    "rotation_deg_all_steps": {
+     "rms": 6.3309,
+     "p95": 13.1681
+    },
+    "rotation_deg_last_step": {
+     "rms": 10.0504,
+     "p95": 19.4192
+    }
+   },
+   "theirs": {
+    "chunks": 295,
+    "gripper_m_all_steps": {
+     "rms": 0.0491,
+     "p95": 0.1027
+    },
+    "gripper_m_last_step": {
+     "rms": 0.077,
+     "p95": 0.1537
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.0645,
+     "p95": 0.1374
+    },
+    "top_point_m_last_step": {
+     "rms": 0.1009,
+     "p95": 0.2008
+    },
+    "rotation_deg_all_steps": {
+     "rms": 6.7618,
+     "p95": 14.0861
+    },
+    "rotation_deg_last_step": {
+     "rms": 10.7436,
+     "p95": 24.1643
+    }
+   },
+   "no_motion": {
+    "chunks": 295,
+    "gripper_m_all_steps": {
+     "rms": 0.0797,
+     "p95": 0.1653
+    },
+    "gripper_m_last_step": {
+     "rms": 0.1285,
+     "p95": 0.2252
+    },
+    "top_point_m_all_steps": {
+     "rms": 0.0831,
+     "p95": 0.1667
+    },
+    "top_point_m_last_step": {
+     "rms": 0.133,
+     "p95": 0.2334
+    },
+    "rotation_deg_all_steps": {
+     "rms": 10.6349,
+     "p95": 22.7488
+    },
+    "rotation_deg_last_step": {
+     "rms": 16.7384,
+     "p95": 33.7871
+    }
+   }
+  }
+ }
+}

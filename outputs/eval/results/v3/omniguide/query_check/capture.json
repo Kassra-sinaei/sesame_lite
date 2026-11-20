@@ -1,0 +1,49 @@
+{
+ "scene": "counter_to_stove_s1001",
+ "stored_run": "/workspace/sesame_lite/outputs/eval_debug/tuning/t_B_a2/counter_to_stove_s1001/proposed_full.json",
+ "field": {
+  "roles_removed": {
+   "stove": [
+    "O(23)"
+   ],
+   "object": [
+    "O(56)"
+   ],
+   "container": [
+    "O(55)"
+   ],
+   "plate": [
+    "O(86)"
+   ]
+  },
+  "points_total": 195868,
+  "points_removed": 2421,
+  "points_in_box": 44850,
+  "occupied_voxels": 42599,
+  "dims": [
+   501,
+   501,
+   241
+  ],
+  "origin": [
+   0.2619,
+   -3.785,
+   -0.1
+  ],
+  "box_half_xy_m": 2.5,
+  "box_z_m": [
+   -0.1,
+   2.3
+  ],
+  "build_s": 6.2
+ },
+ "query_tick": 290,
+ "filter_on_at_query": false,
+ "navigation_ticks": [
+  290,
+  290
+ ],
+ "navigation_u_identical": true,
+ "navigation_q_max_diff": 0.0,
+ "snapshot_identical": true
+}
