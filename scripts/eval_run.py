@@ -75,6 +75,7 @@ ap.add_argument("--video", choices=("auto", "on", "off"), default="auto", help="
 ap.add_argument("--lookahead", type=float, default=FOLLOWER_LOOKAHEAD_M, help="base follower look-ahead [m] (tuning rounds only)")
 ap.add_argument("--scenes-root", default=None, help="a directory of scene variants (tuning only), e.g. outputs/eval_debug/scenes_v0.025")
 ap.add_argument("--horizon", type=int, default=None, help="episode length in ticks (default: the scene's)")
+ap.add_argument("--policy-seed", type=int, default=None, help="seed of the XR1 policy's queries (default: the scene seed); repeated runs of a scene (v3, 2026-11-20)")
 ap.add_argument("--tuning", default=None, help="a tuning round (stage 0b, not counted), e.g. r2")
 ap.add_argument("--vla", default="pi05", choices=("pi05", "xr1"), help="the VLA nominal: lerobot/pi05_robocasa, or Xiaomi-Robotics-1-RoboCasa365 (scripts/xr1_server.py must run)")
 ap.add_argument("--disturbance", default=None, choices=("d1", "d2", "a1", "a2"), help="a velocity disturbance (env.VelocityDisturbance), the same for every method")
@@ -99,7 +100,7 @@ env.method_title = TITLES[args.method] + (", look-around map" if args.map == "lo
 if args.vla == "xr1":
     from xr1_nominal import XR1Policy
 
-    vla = XR1Policy(base, scene["seed"])
+    vla = XR1Policy(base, scene["seed"] if args.policy_seed is None else args.policy_seed)
 else:
     vla = Pi05Policy(scene["task"])
 video = None
@@ -109,7 +110,7 @@ if args.video == "on" or (args.video == "auto" and not args.tuning and args.meth
     video = (video_cls or EvalVideo)(env, (DEBUG_DIR / "tuning_videos" / args.tuning if args.tuning else EVAL_DIR / "videos") / args.scene / f"{args.method}_{args.map}")
 torch.manual_seed(scene["seed"])  # the policy's sampling noise: the same sequence for every method of a scene
 success, stalled = MissionRunner(env, vla=vla, on_frame=video, lookahead=args.lookahead).run(obs)
-result = {"scene": args.scene, "method": args.method, "map": args.map, "seed": scene["seed"], "follower_lookahead_m": args.lookahead, "disturbance_level": args.disturbance, "vla": args.vla, "wall_s": time.time() - t0, **env.summary(success, stalled)}
+result = {"scene": args.scene, "method": args.method, "map": args.map, "seed": scene["seed"], "policy_seed": scene["seed"] if args.policy_seed is None else args.policy_seed, "follower_lookahead_m": args.lookahead, "disturbance_level": args.disturbance, "vla": args.vla, "wall_s": time.time() - t0, **env.summary(success, stalled)}
 env.dump(out, result)
 if video is not None:
     video.close(result)
